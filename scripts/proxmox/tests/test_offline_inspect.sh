@@ -66,13 +66,7 @@ run bash "$S" 9200 "$WORK/out"
 assert_rc 0
 assert_eq "$(cat "$WORK/out/inspect.exit")" 0
 
-# SysprepReturned alone is sufficient (the tag is only required for the SysprepStarting form).
-new_case inspect-returned-without-tag
-setup_sfdisk; make_fixture "$T/fix" notag; export STUB_FIXTURE="$T/fix"
-run bash "$S" 9200 "$WORK/out"
-assert_rc 0
-
-for variant in nosysprep starting-notag starting-failed; do
+for variant in nosysprep notag starting-notag starting-failed; do
   new_case "inspect-$variant"
   setup_sfdisk; make_fixture "$T/fix" "$variant"; export STUB_FIXTURE="$T/fix"
   run bash "$S" 9200 "$WORK/out"

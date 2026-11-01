@@ -45,6 +45,16 @@ for v in starting-notag starting-bothtags; do
   assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
 done
 
+new_case backup-returned-without-tag
+make_evidence "$WORK" returned-notag
+run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
+new_case backup-returned-with-failed-tag
+make_evidence "$WORK" returned-failedtag
+run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
 new_case backup-failed-stage-with-tag
 make_evidence "$WORK"; echo '{"Stage":"Failed"}' >"$WORK/offline-evidence/guest/Tiny11Template/finalization-status.json"
 run bash "$S" 9200 "$WORK"

@@ -88,11 +88,12 @@ find_ntfs_partition() {
 
 # sysprep_evidence_ok <finalization-status.json> <sysprep-evidence-dir>: returns 0 when the collected evidence
 # shows a successful Sysprep, else 1 with a one-line reason on stderr. Rule:
-#   Stage == SysprepReturned, OR
-#   Stage == SysprepStarting AND Sysprep_succeeded.tag exists AND Sysprep_failed.tag does not exist.
-# Why the second form: Sysprep /shutdown can power the VM off before Finalize-Template.ps1 writes SysprepReturned,
-# but Sysprep itself creates Sysprep_succeeded.tag at the end of a successful generalize. Every other state
-# (Failed, missing/garbled file, missing tag, a failed tag, any other stage) fails closed.
+#   (Stage == SysprepReturned OR Stage == SysprepStarting) AND Sysprep_succeeded.tag exists
+#   AND Sysprep_failed.tag does not exist.
+# Why SysprepStarting is accepted: Sysprep /shutdown can power the VM off before Finalize-Template.ps1 writes
+# SysprepReturned, but Sysprep itself creates Sysprep_succeeded.tag at the end of a successful generalize.
+# The succeeded tag is required in every accepted case; every other state (Failed, missing/garbled file,
+# missing tag, a failed tag, any other stage) fails closed.
 sysprep_evidence_ok() {
   local status=${1:-} dir=${2:-} stage
   if [ ! -f "$status" ]; then
@@ -101,8 +102,7 @@ sysprep_evidence_ok() {
   fi
   stage=$(tr -d '\r\n' <"$status" | sed -En 's/.*"(Stage|State)"[[:space:]]*:[[:space:]]*"([^"]*)".*/\2/p')
   case "$stage" in
-    SysprepReturned) return 0 ;;
-    SysprepStarting) ;;
+    SysprepReturned | SysprepStarting) ;;
     *)
       echo "finalization-status.json stage '${stage:-unreadable}' is neither SysprepReturned nor SysprepStarting" >&2
       return 1
@@ -113,7 +113,7 @@ sysprep_evidence_ok() {
     return 1
   fi
   if [ ! -f "$dir/Sysprep_succeeded.tag" ]; then
-    echo "stage SysprepStarting without Sysprep_succeeded.tag" >&2
+    echo "stage $stage without Sysprep_succeeded.tag" >&2
     return 1
   fi
   return 0

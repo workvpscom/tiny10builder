@@ -6,7 +6,7 @@
 # Evidence convention (produced by offline-inspect.sh <vmid> <dumpdir>/offline-evidence):
 #   <dumpdir>/offline-evidence/inspect.exit                                 must contain 0
 #   <dumpdir>/offline-evidence/guest/Tiny11Template/finalization-status.json + guest/Sysprep/ must satisfy lib.sh
-#   sysprep_evidence_ok: stage SysprepReturned, OR stage SysprepStarting with Sysprep_succeeded.tag present and no
+#   sysprep_evidence_ok: stage SysprepReturned or SysprepStarting, AND Sysprep_succeeded.tag present, AND no
 #   Sysprep_failed.tag (Sysprep /shutdown can power the VM off before the guest writes SysprepReturned).
 # Outputs: <dumpdir>/dump/*.vma.zst (new dir, must not pre-exist) and <dumpdir>/backup-<UTC>/ with job.log,
 # source-before.conf, source.conf (after qm set), scsi-before/after.sha256, archive.sha256, archive.path, exit and result.txt (BACKUP_PASS).

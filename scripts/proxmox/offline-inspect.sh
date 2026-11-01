@@ -5,9 +5,9 @@
 # backup.sh expects the evidence at <dumpdir>/offline-evidence, i.e. run with <outdir> = <dumpdir>/offline-evidence.
 # Evidence layout: inspect.exit, inspect.log, guest/Tiny11Template/..., guest/Sysprep/{Sysprep_succeeded.tag,Panther/},
 # guest/cloudbase/..., vioscsi-installed.sha256, evidence.sha256. The loop device is read-only and always detached.
-# Success rule (lib.sh sysprep_evidence_ok): finalization-status.json is SysprepReturned, OR it is SysprepStarting with
-# Sysprep_succeeded.tag present and no Sysprep_failed.tag. Sysprep /shutdown can power the VM off before the guest writes
-# SysprepReturned, yet Sysprep itself writes the succeeded tag; any other state fails closed.
+# Success rule (lib.sh sysprep_evidence_ok): finalization-status.json is SysprepReturned or SysprepStarting, AND
+# Sysprep_succeeded.tag is present, AND Sysprep_failed.tag is absent. Sysprep /shutdown can power the VM off before the
+# guest writes SysprepReturned, yet Sysprep itself writes the succeeded tag; the tag is required always.
 set -Eeuo pipefail
 umask 077
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

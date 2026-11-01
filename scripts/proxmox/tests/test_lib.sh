@@ -61,7 +61,10 @@ sy() { # sy <json-or-NONE> <tags: s|f|sf|none>
   run bash -c ". '$SCRIPTS/lib.sh'; sysprep_evidence_ok '$T/sy/status.json' '$T/sy/ev'"
 }
 new_case sysprep-evidence
-sy '{"Stage":"SysprepReturned"}' none; assert_rc 0
+sy '{"Stage":"SysprepReturned"}' s; assert_rc 0
+sy '{"Stage":"SysprepReturned"}' none; assert_rc 1; assert_out 'Sysprep_succeeded.tag'
+sy '{"Stage":"SysprepReturned"}' sf; assert_rc 1; assert_out 'Sysprep_failed.tag'
+sy '{"Stage":"Failed"}' sf; assert_rc 1
 sy '{"Stage":"SysprepStarting"}' s; assert_rc 0
 sy '{"Stage":"SysprepStarting"}' none; assert_rc 1; assert_out 'Sysprep_succeeded.tag'
 sy '{"Stage":"SysprepStarting"}' sf; assert_rc 1; assert_out 'Sysprep_failed.tag'
