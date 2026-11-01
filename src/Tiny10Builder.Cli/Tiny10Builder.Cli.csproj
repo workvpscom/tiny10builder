@@ -6,6 +6,9 @@
     <RootNamespace>Tiny10Builder.Cli</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Tiny10Builder.Core.Tests"/>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Tiny10Builder.Core\Tiny10Builder.Core.csproj"/>
   </ItemGroup>
 </Project>

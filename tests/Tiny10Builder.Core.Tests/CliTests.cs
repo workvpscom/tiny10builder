@@ -167,4 +167,79 @@ public sealed class CliTests : IDisposable
         Assert.Contains("Cancelled", r.Err);
         Assert.False(File.Exists(Path.Combine(Workspace, "report.json")));
     }
+
+    // --- oscdimg acquisition (BuildEngineAdapter seams; no network) ---
+    private static CliBuildResult Ok(BuildRecipe r) => new(r.OutputPath, "ABC123", "10.0.19045.5555", false);
+
+    private static BuildEngineAdapter Adapter(Func<string> find, Func<string, IProgress<string>?, CancellationToken, Task<string>> acquire,
+        Action<BuildRecipe> seen)
+        => new(acquire, find, (r, _, _) => { seen(r); return Task.FromResult(Ok(r)); });
+
+    [Fact]
+    public async Task Missing_oscdimg_invokes_acquirer_and_passes_its_path_to_the_engine()
+    {
+        var calls = 0; string? dir = null; BuildRecipe? seen = null;
+        var adapter = Adapter(() => "", (d, _, _) => { calls++; dir = d; return Task.FromResult(@"C:	ools\oscdimg.exe"); }, r => seen = r);
+        var r = await Run2(adapter, Build(Recipe(false), Iso()));
+        Assert.Equal(0, r.Code);
+        Assert.Equal(1, calls);
+        Assert.Equal(@"C:	ools\oscdimg.exe", seen!.OscdimgPath);
+        Assert.EndsWith(Path.Combine("Tiny10Builder", "tools"), dir);
+        Assert.False(dir!.StartsWith(Workspace, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Recipe_with_oscdimg_path_does_not_invoke_finder_or_acquirer()
+    {
+        var recipe = await BuildEngineAdapter.ResolveOscdimgAsync(new BuildRecipe { OscdimgPath = @"D:\o\oscdimg.exe" },
+            () => throw new Xunit.Sdk.XunitException("find called"),
+            (_, _, _) => throw new Xunit.Sdk.XunitException("acquire called"), null, default);
+        Assert.Equal(@"D:\o\oscdimg.exe", recipe.OscdimgPath);
+    }
+
+    [Fact]
+    public async Task Installed_oscdimg_does_not_invoke_acquirer()
+    {
+        var calls = 0; BuildRecipe? seen = null;
+        var adapter = Adapter(() => @"C:dk\oscdimg.exe", (_, _, _) => { calls++; return Task.FromResult("x"); }, r => seen = r);
+        var r = await Run2(adapter, Build(Recipe(false), Iso()));
+        Assert.Equal(0, r.Code);
+        Assert.Equal(0, calls);
+        Assert.Equal(@"C:dk\oscdimg.exe", seen!.OscdimgPath);
+    }
+
+    [Theory]
+    [InlineData("hash")]
+    [InlineData("network")]
+    public async Task Acquirer_failure_exits_1_never_2(string kind)
+    {
+        Exception ex = kind == "hash" ? new InvalidDataException("checksum does not match") : new HttpRequestException("no network");
+        var adapter = Adapter(() => "", (_, _, _) => throw ex, _ => { });
+        var r = await Run2(adapter, Build(Recipe(false), Iso()));
+        Assert.Equal(1, r.Code);
+        Assert.Contains(ex.Message, r.Err);
+    }
+
+    [Fact]
+    public async Task Acquirer_progress_messages_are_forwarded_as_build_progress()
+    {
+        var got = new List<BuildProgress>();
+        var recipe = await BuildEngineAdapter.ResolveOscdimgAsync(new BuildRecipe(), () => "",
+            (_, p, _) => { p!.Report("Downloading tool."); return Task.FromResult("x"); },
+            new SyncProgress(got.Add), default);
+        Assert.Equal("x", recipe.OscdimgPath);
+        Assert.Contains(got, g => g.Message == "Downloading tool.");
+    }
+
+    private sealed class SyncProgress(Action<BuildProgress> a) : IProgress<BuildProgress>
+    {
+        public void Report(BuildProgress value) => a(value);
+    }
+
+    private async Task<(int Code, string Out, string Err)> Run2(ICliEngine engine, params string[] args)
+    {
+        var o = new StringWriter(); var e = new StringWriter();
+        var code = await CliApp.RunAsync(args, engine, o, e, default);
+        return (code, o.ToString(), e.ToString());
+    }
 }

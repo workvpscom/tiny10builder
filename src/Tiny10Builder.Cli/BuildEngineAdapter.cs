@@ -8,10 +8,62 @@ namespace Tiny10Builder.Cli;
 [SupportedOSPlatform("windows")]
 public sealed class BuildEngineAdapter : ICliEngine
 {
+    private static readonly Lazy<HttpClient> Http = new(() => new HttpClient { Timeout = TimeSpan.FromMinutes(5) });
+
+    private readonly Func<string, IProgress<string>?, CancellationToken, Task<string>> acquireOscdimg;
+    private readonly Func<string> findOscdimg;
+    private readonly Func<BuildRecipe, IProgress<BuildProgress>?, CancellationToken, Task<CliBuildResult>> runEngine;
+
+    /// <summary>Tools live outside the build workspace and the output so a failed or resumed build never touches them.</summary>
+    internal static string ToolsDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Tiny10Builder", "tools");
+
+    public BuildEngineAdapter() : this(null, null, null) { }
+
+    internal BuildEngineAdapter(
+        Func<string, IProgress<string>?, CancellationToken, Task<string>>? acquireOscdimg,
+        Func<string>? findOscdimg,
+        Func<BuildRecipe, IProgress<BuildProgress>?, CancellationToken, Task<CliBuildResult>>? runEngine)
+    {
+        this.acquireOscdimg = acquireOscdimg ?? ((dir, progress, token) => new OscdimgAcquirer(Http.Value).EnsureAsync(dir, progress, token));
+        this.findOscdimg = findOscdimg ?? ToolLocator.FindOscdimg;
+        this.runEngine = runEngine ?? RunRealEngineAsync;
+    }
+
     public async Task<CliBuildResult> BuildAsync(BuildRecipe recipe, IProgress<BuildProgress>? progress, CancellationToken token)
     {
         if (string.IsNullOrEmpty(recipe.DismPath)) recipe = recipe with { DismPath = ToolLocator.FindDism() };
-        if (string.IsNullOrEmpty(recipe.OscdimgPath)) recipe = recipe with { OscdimgPath = ToolLocator.FindOscdimg() };
+        recipe = await ResolveOscdimgAsync(recipe, findOscdimg, acquireOscdimg, progress, token).ConfigureAwait(false);
+        return await runEngine(recipe, progress, token).ConfigureAwait(false);
+    }
+
+    internal static async Task<BuildRecipe> ResolveOscdimgAsync(BuildRecipe recipe, Func<string> find,
+        Func<string, IProgress<string>?, CancellationToken, Task<string>> acquire, IProgress<BuildProgress>? progress,
+        CancellationToken token)
+    {
+        if (!string.IsNullOrEmpty(recipe.OscdimgPath)) return recipe;
+        var installed = find();
+        if (!string.IsNullOrEmpty(installed)) return recipe with { OscdimgPath = installed };
+        var forward = progress is null ? null : new SyncProgress(m => progress.Report(new BuildProgress("Tools", m)));
+        try
+        {
+            var acquired = await acquire(ToolsDirectory, forward, token).ConfigureAwait(false);
+            return recipe with { OscdimgPath = acquired };
+        }
+        catch (InvalidDataException e)
+        {
+            // CliApp maps InvalidDataException to exit 2 (validation); a bad download is an environment failure (exit 1).
+            throw new InvalidOperationException(e.Message, e);
+        }
+    }
+
+    private sealed class SyncProgress(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
+    }
+
+    private static async Task<CliBuildResult> RunRealEngineAsync(BuildRecipe recipe, IProgress<BuildProgress>? progress, CancellationToken token)
+    {
         var engine = new BuildEngine(new ProcessRunner(), new MediaSourceFactory(), new OfflineRegistry(),
             new ImageOperations(), new BuildHost());
         var result = await engine.BuildAsync(recipe, progress, token).ConfigureAwait(false);
