@@ -314,6 +314,9 @@ internal sealed class FakeRunner(int build, string architecture, List<string> ev
     public bool FailCommit { get; set; }
     public bool FailDiscard { get; set; }
     public Action<IReadOnlyList<string>>? OnCommand { get; set; }
+    // Per-file image reading override (build, architecture); null keeps the constructor values. Models DISM refreshing the metadata
+    // of a serviced image (working.wim / install.esd) while the original source keeps its stale reading.
+    public Func<string, (int Build, string Architecture)?>? ReadingFor { get; set; }
     public List<string> InstalledCapabilities { get; } = ["Language.OCR~~~en-US~0.0.1.0"];
     public string CapabilityStateAfterRemoval { get; set; } = "Not Present";
     public string FeatureStateAfterRemoval { get; set; } = "Disabled with Payload Removed";
@@ -387,9 +390,10 @@ internal sealed class FakeRunner(int build, string architecture, List<string> ev
             var boot = file.EndsWith("boot.wim", StringComparison.OrdinalIgnoreCase);
             if (!args.Any(a => a.StartsWith("/Index:")))
                 return Result(boot ? "Index : 1\nIndex : 2\n" : file.Contains(@"\source\") ? "Index : 3\n" : "Index : 1\n");
+            var (reportedBuild, reportedArchitecture) = ReadingFor?.Invoke(file) ?? (build, architecture);
             return Result($"Deployment Image Servicing and Management tool\nVersion: 10.0.99999.1000\n" +
                 $"Name : {(boot ? (args.Contains("/Index:1") ? "Microsoft Windows PE" : "Microsoft Windows Setup") : ImageName)}\nDescription : Image\n" +
-                $"Architecture : {architecture}\nVersion : 10.0.{build}\nServicePack Build : 123\n" +
+                $"Architecture : {reportedArchitecture}\nVersion : 10.0.{reportedBuild}\nServicePack Build : 123\n" +
                 $"Edition : {ImageEdition}\nInstallation : Client\nSize : 16,000,000,000 bytes\n");
         }
         if (args.Contains("/Export-Image"))

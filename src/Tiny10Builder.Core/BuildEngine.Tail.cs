@@ -240,7 +240,7 @@ public sealed partial class BuildEngine
         // The export has finished. Checking, placing and checkpointing its result must not be interrupted by a cancellation
         // request, or the finished (and slowest) work would be lost; cancellation is observed at the next stage boundary.
         var finalImages = await s.Dism.GetImagesAsync(partial, CancellationToken.None).ConfigureAwait(false);
-        if (finalImages.Count != 1 || finalImages[0].Version.Build != s.Image.Version.Build ||
+        if (finalImages.Count != 1 || !ServicingFamily.Same(finalImages[0].Version.Build, s.Image.Version.Build) ||
             finalImages[0].Architecture != s.Image.Architecture)
             throw new InvalidDataException("The final installation image failed its edition/build/architecture check.");
         Digest.RequireCompleteWim(partial, "The compressed installation image");

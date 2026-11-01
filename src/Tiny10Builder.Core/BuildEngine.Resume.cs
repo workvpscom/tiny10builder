@@ -247,7 +247,7 @@ public sealed partial class BuildEngine
     {
         if (images.Count != 1) throw new InvalidDataException($"{what} must contain exactly one image but contains {images.Count}.");
         var actual = images[0];
-        if (actual.Architecture != expected.Architecture || actual.Version.Build != expected.Version.Build ||
+        if (actual.Architecture != expected.Architecture || !ServicingFamily.Same(actual.Version.Build, expected.Version.Build) ||
             !actual.Edition.Equals(expected.Edition, StringComparison.OrdinalIgnoreCase) ||
             !actual.Name.Equals(expected.Name, StringComparison.OrdinalIgnoreCase) ||
             !actual.Installation.Equals(expected.Installation, StringComparison.OrdinalIgnoreCase))
