@@ -61,7 +61,7 @@ RDPPolicy=Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Serv
 RDPListener=Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State
 RDPFirewall=Get-NetFirewallRule -Name 'RemoteDesktop*' | Select-Object Name,Enabled,Direction,Action
 RDPCertificateBinding=$rdp | Select-Object SSLCertificateSHA1Hash,SecurityLayer,UserAuthenticationRequired
-RDPCertificateSHA256=if($cert){[BitConverter]::ToString($sha.ComputeHash($cert.RawData)).Replace('-','')}
 EdgeProbe=Test-EdgeProbe
+RDPCertificateSHA256=if($cert){[BitConverter]::ToString($sha.ComputeHash($cert.RawData)).Replace('-','')}
 }
 $result | ConvertTo-Json -Depth 12 -Compress
