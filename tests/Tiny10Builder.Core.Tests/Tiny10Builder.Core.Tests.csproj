@@ -12,5 +12,6 @@
     <PackageReference Include="xunit" Version="2.9.2"/>
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all"/>
     <ProjectReference Include="..\..\src\Tiny10Builder.Core\Tiny10Builder.Core.csproj"/>
+    <ProjectReference Include="..\..\src\Tiny10Builder.Cli\Tiny10Builder.Cli.csproj"/>
   </ItemGroup>
 </Project>

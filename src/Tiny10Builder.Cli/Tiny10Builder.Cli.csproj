@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>tiny10</AssemblyName>
+    <RootNamespace>Tiny10Builder.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tiny10Builder.Core\Tiny10Builder.Core.csproj"/>
+  </ItemGroup>
+</Project>
