@@ -365,5 +365,62 @@ class SelectEthernetAdapterTests(unittest.TestCase):
                 self.assertIs(module.select_ethernet_adapter([adapter('X', desc, hw), PHYSICAL]), PHYSICAL)
 
 
+VIRTIO_ROW = {'NetConnectionID': 'Ethernet', 'Description': 'Red Hat VirtIO Ethernet Adapter',
+              'PNPDeviceID': 'PCI\\VEN_1AF4&DEV_1000\\3&13C0B0C5&0&18', 'NetConnectionStatus': 2}
+KDNIC_ROW = {'NetConnectionID': 'Ethernet 2', 'Description': 'Microsoft Kernel Debug Network Adapter',
+             'PNPDeviceID': 'ROOT\\KDNIC\\0000', 'NetConnectionStatus': 2}
+
+
+class AdapterJoinTests(unittest.TestCase):
+    """WindowsBackend._adapters joins osutils names to Win32_NetworkAdapter rows by NetConnectionID."""
+
+    def backend(self, names, output):
+        import json
+        backend = module.WindowsBackend.__new__(module.WindowsBackend)
+        backend.interface = None
+        backend.osutils = types.SimpleNamespace(
+            get_network_adapters=lambda: [(n, '00:11:22:33:44:55') for n in names])
+        backend._powershell = lambda script: output if isinstance(output, str) else json.dumps(output)
+        return backend
+
+    def test_list_joins_keys_and_selects_virtio_over_kernel_debug(self):
+        backend = self.backend(['Ethernet', 'Ethernet 2'], [KDNIC_ROW, VIRTIO_ROW])
+        adapters = backend._adapters()
+        self.assertEqual(sorted(adapters, key=lambda a: a['Name']), [
+            {'Name': 'Ethernet', 'Description': 'Red Hat VirtIO Ethernet Adapter',
+             'HardwareId': VIRTIO_ROW['PNPDeviceID'], 'Status': 'Up'},
+            {'Name': 'Ethernet 2', 'Description': 'Microsoft Kernel Debug Network Adapter',
+             'HardwareId': 'ROOT\\KDNIC\\0000', 'Status': 'Up'}])
+        backend.validate_network({'mode': 'static', 'ip': '10.0.0.5', 'prefix': 24,
+                                  'gateway': '10.0.0.1', 'dns': ['10.0.0.1']})
+        self.assertEqual(backend.interface, 'Ethernet')
+
+    def test_single_dict_row(self):
+        adapters = self.backend(['Ethernet'], VIRTIO_ROW)._adapters()
+        self.assertEqual([a['Name'] for a in adapters], ['Ethernet'])
+
+    def test_empty_output_fails_closed(self):
+        backend = self.backend(['Ethernet'], '')
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter(backend._adapters())
+
+    def test_status_other_than_connected_is_down(self):
+        row = dict(VIRTIO_ROW, NetConnectionStatus=7)
+        adapters = self.backend(['Ethernet'], [row])._adapters()
+        self.assertEqual(adapters[0]['Status'], 'Down')
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter(adapters)
+
+    def test_cim_rows_not_listed_by_osutils_are_ignored(self):
+        adapters = self.backend(['Ethernet'], [KDNIC_ROW, VIRTIO_ROW])._adapters()
+        self.assertEqual([a['Name'] for a in adapters], ['Ethernet'])
+
+    def test_osutils_adapter_without_cim_row_fails_closed(self):
+        # Otherwise a second real NIC would be silently dropped and the remaining one chosen.
+        backend = self.backend(['Ethernet', 'Ethernet 3'], [VIRTIO_ROW])
+        with self.assertRaises(ValueError):
+            backend._adapters()
+
+
 if __name__ == '__main__':
     unittest.main()

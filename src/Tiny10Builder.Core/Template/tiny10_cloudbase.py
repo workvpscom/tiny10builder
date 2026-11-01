@@ -306,10 +306,15 @@ class WindowsBackend:
         rows = json.loads(raw) if raw else []
         if isinstance(rows, dict):
             rows = [rows]
-        return [{'Name': row['NetConnectionID'], 'Description': row.get('Description'),
-                 'HardwareId': row.get('PNPDeviceID'),
-                 'Status': 'Up' if row.get('NetConnectionStatus') == 2 else 'Down'}
-                for row in rows if row['NetConnectionID'] in names]
+        # Join key is the interface name: osutils name == Win32_NetworkAdapter.NetConnectionID (not the MAC).
+        # An osutils adapter with no CIM row fails closed instead of being silently dropped.
+        joined = [{'Name': row['NetConnectionID'], 'Description': row.get('Description'),
+                   'HardwareId': row.get('PNPDeviceID'),
+                   'Status': 'Up' if row.get('NetConnectionStatus') == 2 else 'Down'}
+                  for row in rows if row['NetConnectionID'] in names]
+        if names - {a['Name'] for a in joined}:
+            raise ValueError('Adapter missing from Win32_NetworkAdapter')
+        return joined
 
     def apply_network(self, desired):
         self.osutils.set_static_network_config(self.interface, desired['ip'], desired['prefix'],
