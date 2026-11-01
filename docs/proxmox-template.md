@@ -151,24 +151,40 @@ Acceptance on the restored VM (VMID 9211, name `tiny10-acc-a`) used `scripts/pro
 | Drivers | VirtIO SCSI and Serial 100.93.104.24000 |
 | Cloudbase plugin | `tiny10_cloudbase.py` SHA-256 `2F32147F99797493E1192BB46ACB22D80F43288E6EE7B6918C1899882706E6B9`; day-2 state Applied, `access_ready` true (network Static, password Provided) |
 | Services | QEMU-GA Running/Auto, cloudbase-init Stopped/Auto, TermService Running/Auto |
-| RDP | enabled (`fDenyTSConnections` 0), listener on 3389 (v4 and v6), firewall rules enabled, NLA (`UserAuthenticationRequired` 1, `SecurityLayer` 2) |
+| RDP | enabled (`fDenyTSConnections` 0), listener on 3389 (v4 and v6), a custom 3389 rule enabled (the built-in `RemoteDesktop-*` rules were disabled in this first run, see Day-2 acceptance), NLA (`UserAuthenticationRequired` 1, `SecurityLayer` 2) |
 | RDP certificate | SHA-256 `5142DA8AC4E49F3CBDE5B6F16B0362797B7700EA3D2B66400C59482D325D59D7`, matches the certificate observed on the wire from the node with openssl |
 | Edge | `msedge` 92.0.902.67 in `C:\Program Files (x86)\Microsoft\Edge\Application`; headless screenshot probe Passed (ExitCode 0, 7319-byte PNG), run as SYSTEM via QGA without `--no-sandbox` |
 | Disk | WinSxS after Core trim: 225 directories, about 0.3 GB of files; C: 21.35 GB volume with about 10.97 GB free |
 
 Cmdlets verified present on the trimmed image: `Get-NetIPAddress`, `Get-NetRoute`, `Get-DnsClientServerAddress`, `Get-NetTCPConnection`, `Get-NetFirewallRule`, `Get-Disk`, `Get-Partition`, `Get-Volume`, `Get-CimInstance`. The Edge keep patterns needed no adjustment: Edge worked after the first install.
 
+## Day-2 acceptance (restored VM, reboot applies the change)
+
+Run on a VM restored from the archive below (`qmrestore --unique 1`), changing one cloud-init value at a time, regenerating the cloud-init image (`qm set`) and rebooting. A 5 MiB random file, a text file and a registry value written before the first change were unchanged (SHA-256 identical) after every step.
+
+| Step | Change | Result |
+| --- | --- | --- |
+| 1 | Password | old password rejected, new accepted (`LogonUser`) |
+| 2 | IP and DNS | 10.10.10.196 to .197 and DNS 10.10.10.1 to 1.1.1.1 applied; TCP 3389 answers on the new address |
+| 3 | Hostname (VM name) | `TINY10-V2` to `TINY10-RENAMED2` |
+| 4 | Disk +10 GB (`qm resize`) | disk 20 to 30 GB and C: 19.88 to 29.89 GB (`ExtendVolumesPlugin`), data intact |
+| 5 | Reboot with no change | nothing re-applied, all values and data unchanged |
+
+Also verified on the same image: a real RDP login with NLA from the maintainer's Mac (`xfreerdp +auth-only`: wrong password `ERRCONNECT_LOGON_FAILURE`, right password accepted), the first-sign-in "Hi" animation (about 40 s, then the desktop) and Settings > Remote Desktop.
+
+Defect found and fixed: with only the custom 3389 rule, RDP worked but Settings showed Remote Desktop **Off**, because the five built-in `RemoteDesktop-*` firewall rules were disabled. `Configure-GuestPolicy.ps1 -ActivateRdp` now enables and verifies them. The archive delivered with this PR was **not** rebuilt from the ISO: its sealed disk was patched offline with `C:\Windows\Setup\Scripts\SetupComplete.cmd` (`Get-NetFirewallRule -Name 'RemoteDesktop-*' | Enable-NetFirewallRule`), which runs after OOBE on first boot. On the restored VM all five rules are enabled and Settings shows On. A fresh ISO build would get the same result from the script fix instead.
+
 ## Delivered artefacts
 
 | Artefact | Size | SHA-256 |
 | --- | --- | --- |
 | `tiny10-core-proxmox-win10-v1.iso` | 3,169,628,160 bytes | `2CB4BD513AF81B506FD979C3FF2D56B54A3F20D0A059A7D7D2F64D79E137FD67` |
-| `vzdump-qemu-9210-2026_11_01-20_53_50.vma.zst` | 3,196,598,863 bytes | `466e11da2f768c05226dae202f3a62a0ef9617e361c856e53ae60e2eb9dac8e2` |
+| `vzdump-qemu-9213-2026_11_02-00_44_01.vma.zst` (patched, final) | 3,191,470,207 bytes | `7c13a3f594ec384283aba848e9a7f59f9c92f1b3aaa244ed2c6fb344643d86a8` |
+| `vzdump-qemu-9210-2026_11_01-20_53_50.vma.zst` (first archive, superseded) | 3,196,598,863 bytes | `466e11da2f768c05226dae202f3a62a0ef9617e361c856e53ae60e2eb9dac8e2` |
 
 ## Limitations
 
-- An authenticated RDP session (xfreerdp/mstsc) was **not** run; only the RDP listener, NLA settings and the certificate pin were verified.
-- Day-2 reconciliation (hostname/password/IP changes after first boot), disk growth and load tests were not repeated.
+- Not tested: load, disk shrink, a second node, changing several values on a machine that is mid-reboot-loop. The final fix to `Configure-GuestPolicy.ps1` was not re-run through a full ISO build; the C# tests were not re-run after it.
 - This is not a live-backup/VSS certification; the backup was taken from a stopped VM. One server only; no second-node test.
 - WebView2 is absent from the source media and is not provided (not required).
 - Windows 10 22H2 is out of mainstream support (14 Oct 2025). Core cannot be serviced after the build. The media is the May 2023 release (Edge 92 inside); Edge updates itself only if EdgeUpdate can run and the VM is online.
