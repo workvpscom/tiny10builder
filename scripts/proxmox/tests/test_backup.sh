@@ -33,6 +33,23 @@ make_evidence "$WORK"; echo '{"State":"Running"}' >"$WORK/offline-evidence/guest
 run bash "$S" 9200 "$WORK"
 assert_rc_nonzero; assert_not_logged '^vzdump'
 
+new_case backup-starting-with-tag
+make_evidence "$WORK" starting
+run bash "$S" 9200 "$WORK"
+assert_rc 0; assert_logged '^vzdump'; assert_logged '^qm set'
+
+for v in starting-notag starting-bothtags; do
+  new_case "backup-$v"
+  make_evidence "$WORK" "$v"
+  run bash "$S" 9200 "$WORK"
+  assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+done
+
+new_case backup-failed-stage-with-tag
+make_evidence "$WORK"; echo '{"Stage":"Failed"}' >"$WORK/offline-evidence/guest/Tiny11Template/finalization-status.json"
+run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
 for bad in 'cipassword: secret' 'template: 1' 'ciuser: Administrator' 'ipconfig0: ip=dhcp' 'cicustom: user=x' 'sshkeys: abc'; do
   new_case "backup-config-$bad"
   make_evidence "$WORK"

@@ -51,4 +51,23 @@ export STUB_DF_AVAIL=13000000000
 run bash -c ". '$SCRIPTS/lib.sh'; require_free_gb '$WORK' 12"; assert_rc 0
 STUB_VM_STATE=running run bash -c ". '$SCRIPTS/lib.sh'; require_stopped 9200"; assert_rc 3
 run bash -c ". '$SCRIPTS/lib.sh'; require_stopped 9200"; assert_rc 0
+
+# sysprep_evidence_ok <status.json> <sysprep-dir>
+sy() { # sy <json-or-NONE> <tags: s|f|sf|none>
+  rm -rf "$T/sy"; mkdir -p "$T/sy/ev"
+  if [ "$1" != NONE ]; then printf '%s\n' "$1" >"$T/sy/status.json"; fi
+  case "$2" in *s*) : >"$T/sy/ev/Sysprep_succeeded.tag" ;; esac
+  case "$2" in *f*) : >"$T/sy/ev/Sysprep_failed.tag" ;; esac
+  run bash -c ". '$SCRIPTS/lib.sh'; sysprep_evidence_ok '$T/sy/status.json' '$T/sy/ev'"
+}
+new_case sysprep-evidence
+sy '{"Stage":"SysprepReturned"}' none; assert_rc 0
+sy '{"Stage":"SysprepStarting"}' s; assert_rc 0
+sy '{"Stage":"SysprepStarting"}' none; assert_rc 1; assert_out 'Sysprep_succeeded.tag'
+sy '{"Stage":"SysprepStarting"}' sf; assert_rc 1; assert_out 'Sysprep_failed.tag'
+sy '{"Stage":"Failed"}' s; assert_rc 1
+sy '{"Stage":"Running"}' s; assert_rc 1
+sy NONE s; assert_rc 1; assert_out 'missing'
+sy '' s; assert_rc 1
+sy 'not json {{' s; assert_rc 1
 summary test_lib

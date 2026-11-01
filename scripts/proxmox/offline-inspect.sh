@@ -5,6 +5,9 @@
 # backup.sh expects the evidence at <dumpdir>/offline-evidence, i.e. run with <outdir> = <dumpdir>/offline-evidence.
 # Evidence layout: inspect.exit, inspect.log, guest/Tiny11Template/..., guest/Sysprep/{Sysprep_succeeded.tag,Panther/},
 # guest/cloudbase/..., vioscsi-installed.sha256, evidence.sha256. The loop device is read-only and always detached.
+# Success rule (lib.sh sysprep_evidence_ok): finalization-status.json is SysprepReturned, OR it is SysprepStarting with
+# Sysprep_succeeded.tag present and no Sysprep_failed.tag. Sysprep /shutdown can power the VM off before the guest writes
+# SysprepReturned, yet Sysprep itself writes the succeeded tag; any other state fails closed.
 set -Eeuo pipefail
 umask 077
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -83,9 +86,8 @@ fi
 
 find "$MNT/Windows/System32/drivers" -maxdepth 1 -type f -iname 'vioscsi.sys' | while IFS= read -r f; do sha256sum "$f"; done >"$E/vioscsi-installed.sha256"
 
-# Assertions: sysprep finished and left its success tag; the driver is present.
-grep -q SysprepReturned "$E/guest/Tiny11Template/finalization-status.json" || die "finalization-status.json lacks SysprepReturned" 1
-[ -f "$E/guest/Sysprep/Sysprep_succeeded.tag" ] || die "Sysprep_succeeded.tag missing" 1
+# Assertions: sysprep succeeded (see sysprep_evidence_ok in lib.sh); the driver is present.
+sysprep_evidence_ok "$E/guest/Tiny11Template/finalization-status.json" "$E/guest/Sysprep" || die "Sysprep success not proven by the collected evidence" 1
 [ -s "$E/vioscsi-installed.sha256" ] || die "vioscsi.sys not found in guest" 1
 
 find "$E/guest" -type f -exec chmod 600 '{}' +

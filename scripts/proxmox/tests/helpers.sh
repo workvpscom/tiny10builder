@@ -151,13 +151,19 @@ assert_file() { if [ -e "$1" ]; then _ok; else _bad "expected file: $1"; fi; }
 assert_no_file() { if [ -e "$1" ]; then _bad "unexpected file: $1"; else _ok; fi; }
 assert_eq() { if [ "$1" = "$2" ]; then _ok; else _bad "expected [$2], got [$1]"; fi; }
 
-# make_evidence <dumpdir> [ok|bad]: offline-inspect evidence in the backup.sh convention.
+# make_evidence <dumpdir> [returned|starting|starting-notag|starting-bothtags]: offline-inspect evidence in the backup.sh convention.
 make_evidence() {
   local e=$1/offline-evidence
   mkdir -p "$e/guest/Tiny11Template" "$e/guest/Sysprep"
   echo 0 >"$e/inspect.exit"
   echo '{"State":"SysprepReturned"}' >"$e/guest/Tiny11Template/finalization-status.json"
   : >"$e/guest/Sysprep/Sysprep_succeeded.tag"
+  case "${2:-returned}" in
+    starting | starting-notag | starting-bothtags) echo '{"Stage":"SysprepStarting"}' >"$e/guest/Tiny11Template/finalization-status.json" ;;
+  esac
+  [ "${2:-}" = starting-notag ] && rm -f "$e/guest/Sysprep/Sysprep_succeeded.tag"
+  [ "${2:-}" = starting-bothtags ] && : >"$e/guest/Sysprep/Sysprep_failed.tag"
+  return 0
 }
 
 summary() { printf '%s: %d passed, %d failed\n' "$1" "$PASS" "$FAIL"; [ "$FAIL" -eq 0 ]; }

@@ -5,14 +5,16 @@ set -Eeuo pipefail
 . "$(dirname "$0")/helpers.sh"
 S="$SCRIPTS/offline-inspect.sh"
 
-make_fixture() { # make_fixture <dir> [good|nosysprep|notag]
+make_fixture() { # make_fixture <dir> [good|nosysprep|notag|starting|starting-notag|starting-failed]
   local f=$1
   mkdir -p "$f/ProgramData/Tiny11Template/day2-state" "$f/Windows/System32/Sysprep/Panther" "$f/Windows/System32/drivers" \
     "$f/Windows/Panther" "$f/Program Files/Cloudbase Solutions/Cloudbase-Init/conf" "$f/Program Files/Cloudbase Solutions/Cloudbase-Init/Python/Lib/site-packages"
   echo '{"State":"SysprepReturned"}' >"$f/ProgramData/Tiny11Template/finalization-status.json"
   [ "${2:-good}" = nosysprep ] && echo '{"State":"Running"}' >"$f/ProgramData/Tiny11Template/finalization-status.json"
+  case "${2:-good}" in starting*) echo '{"Stage":"SysprepStarting"}' >"$f/ProgramData/Tiny11Template/finalization-status.json" ;; esac
+  [ "${2:-good}" = starting-failed ] && : >"$f/Windows/System32/Sysprep/Sysprep_failed.tag"
   echo log >"$f/Windows/System32/Sysprep/Panther/setupact.log"
-  [ "${2:-good}" = notag ] || : >"$f/Windows/System32/Sysprep/Sysprep_succeeded.tag"
+  [ "${2:-good}" = notag ] || [ "${2:-good}" = starting-notag ] || : >"$f/Windows/System32/Sysprep/Sysprep_succeeded.tag"
   echo drv >"$f/Windows/System32/drivers/vioscsi.sys"
   echo conf >"$f/Program Files/Cloudbase Solutions/Cloudbase-Init/conf/cloudbase-init.conf"
   echo py >"$f/Program Files/Cloudbase Solutions/Cloudbase-Init/Python/Lib/site-packages/tiny10_cloudbase.py"
@@ -58,7 +60,19 @@ assert_file "$WORK/out/guest/cloudbase/Program Files/Cloudbase Solutions/Cloudba
 assert_file "$WORK/out/evidence.sha256"
 if grep -rqi chrome "$S"; then fail "script mentions chrome"; else _ok; fi
 
-for variant in nosysprep notag; do
+new_case inspect-starting-with-tag
+setup_sfdisk; make_fixture "$T/fix" starting; export STUB_FIXTURE="$T/fix"
+run bash "$S" 9200 "$WORK/out"
+assert_rc 0
+assert_eq "$(cat "$WORK/out/inspect.exit")" 0
+
+# SysprepReturned alone is sufficient (the tag is only required for the SysprepStarting form).
+new_case inspect-returned-without-tag
+setup_sfdisk; make_fixture "$T/fix" notag; export STUB_FIXTURE="$T/fix"
+run bash "$S" 9200 "$WORK/out"
+assert_rc 0
+
+for variant in nosysprep starting-notag starting-failed; do
   new_case "inspect-$variant"
   setup_sfdisk; make_fixture "$T/fix" "$variant"; export STUB_FIXTURE="$T/fix"
   run bash "$S" 9200 "$WORK/out"

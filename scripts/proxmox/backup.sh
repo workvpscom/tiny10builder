@@ -5,8 +5,9 @@
 # Exit codes: 2 bad arguments, 3 VM running or too little free space, other non-zero = failed check.
 # Evidence convention (produced by offline-inspect.sh <vmid> <dumpdir>/offline-evidence):
 #   <dumpdir>/offline-evidence/inspect.exit                                 must contain 0
-#   <dumpdir>/offline-evidence/guest/Tiny11Template/finalization-status.json must contain SysprepReturned
-#   <dumpdir>/offline-evidence/guest/Sysprep/Sysprep_succeeded.tag           must exist
+#   <dumpdir>/offline-evidence/guest/Tiny11Template/finalization-status.json + guest/Sysprep/ must satisfy lib.sh
+#   sysprep_evidence_ok: stage SysprepReturned, OR stage SysprepStarting with Sysprep_succeeded.tag present and no
+#   Sysprep_failed.tag (Sysprep /shutdown can power the VM off before the guest writes SysprepReturned).
 # Outputs: <dumpdir>/dump/*.vma.zst (new dir, must not pre-exist) and <dumpdir>/backup-<UTC>/ with job.log,
 # source-before.conf, source.conf (after qm set), scsi-before/after.sha256, archive.sha256, archive.path, exit and result.txt (BACKUP_PASS).
 # The node's /etc/vzdump.conf hook deletes/uploads archives, so `--script /bin/true` is mandatory below.
@@ -28,8 +29,7 @@ require_free_gb "$DUMPDIR" 12
 
 EV="$DUMPDIR/offline-evidence"
 [ -f "$EV/inspect.exit" ] && [ "$(cat "$EV/inspect.exit")" = 0 ] || die "offline-inspect evidence missing or not clean ($EV/inspect.exit)" 1
-grep -q SysprepReturned "$EV/guest/Tiny11Template/finalization-status.json" || die "evidence lacks SysprepReturned" 1
-[ -f "$EV/guest/Sysprep/Sysprep_succeeded.tag" ] || die "evidence lacks Sysprep_succeeded.tag" 1
+sysprep_evidence_ok "$EV/guest/Tiny11Template/finalization-status.json" "$EV/guest/Sysprep" || die "evidence does not prove Sysprep success" 1
 [ ! -e "$DUMPDIR/dump" ] || die "$DUMPDIR/dump already exists; refusing to mix archives" 1
 
 R="$DUMPDIR/backup-$(date -u +%Y%m%dT%H%M%SZ)"
