@@ -11,15 +11,17 @@ namespace Tiny10Builder.Core.Tests;
 public sealed class AutomaticMediaTests
 {
     [Fact]
-    public void Defaults_to_exact_Pro_then_index_one_and_preserves_restored_choice()
+    public void Defaults_to_Windows_10_Pro_and_preserves_restored_choice()
     {
-        var home = CompatibilityTests.Image() with { Index = 1, Name = "Windows 11 Home", Edition = "Core" };
-        var proN = home with { Index = 2, Name = "Windows 11 Pro N", Edition = "ProfessionalN" };
-        var pro = home with { Index = 6, Name = "Windows 11 Pro", Edition = "Professional" };
+        var home = CompatibilityTests.Image() with { Index = 1, Name = "Windows 10 Home", Edition = "Core" };
+        var proN = home with { Index = 2, Name = "Windows 10 Pro N", Edition = "ProfessionalN" };
+        var pro = home with { Index = 6, Name = "Windows 10 Pro", Edition = "Professional" };
         Assert.Equal(2, ImageDefaults.SelectPosition([home, proN, pro]));
-        Assert.Equal(1, ImageDefaults.SelectPosition([proN, home]));
         Assert.Equal(0, ImageDefaults.SelectPosition([home, pro], 1));
-        Assert.Throws<InvalidDataException>(() => ImageDefaults.SelectPosition([proN]));
+        Assert.Equal("No Windows 10 Pro image in this source.",
+            Assert.Throws<InvalidDataException>(() => ImageDefaults.SelectPosition([proN, home])).Message);
+        Assert.Equal("No Windows 10 Pro image in this source.",
+            Assert.Throws<InvalidDataException>(() => ImageDefaults.SelectPosition([proN])).Message);
         Assert.Throws<InvalidDataException>(() => ImageDefaults.SelectPosition([]));
     }
 

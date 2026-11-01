@@ -10,10 +10,8 @@ namespace Tiny10Builder.Core.Tests;
 public sealed class BuildEngineTests
 {
     [Theory]
-    [InlineData(22621, "x64", Compression.Recovery)]
-    [InlineData(22631, "arm64", Compression.Maximum)]
-    [InlineData(26300, "x64", Compression.Recovery)]
-    [InlineData(29689, "arm64", Compression.Recovery)]
+    [InlineData(19045, "x64", Compression.Recovery)]
+    [InlineData(19045, "x64", Compression.Maximum)]
     public async Task Pipeline_exports_selected_edition_uses_actual_build_and_keeps_source(int build, string arch, Compression compression)
     {
         using var fixture = new BuildFixture(build, arch);
@@ -122,12 +120,11 @@ public sealed class BuildEngineTests
     }
 
     [Fact]
-    public async Task Hardware_bypass_modifies_setup_image_and_uses_UEFI_only_for_arm64()
+    public async Task Hardware_bypass_modifies_setup_image_and_()
     {
-        using var fixture = new BuildFixture(29689, "arm64");
+        using var fixture = new BuildFixture();
         await fixture.Engine.BuildAsync(fixture.Recipe with { SelectedOptions = ["hardware-bypass"] }, null, CancellationToken.None);
         Assert.True(fixture.Registry.SetupCalled);
-        Assert.Contains(fixture.Runner.Calls, c => c.Any(a => a.StartsWith("-bootdata:1#pEF", StringComparison.Ordinal)));
         Assert.Equal(2, fixture.Runner.Calls.Count(c => c.Contains("/Mount-Image")));
     }
 
@@ -217,7 +214,7 @@ internal sealed class BuildFixture : IDisposable
     public BuildEngine OptInOptimizedEngine => new(Runner, new FakeMediaFactory(), Registry, Operations, new FakeHost(),
         new BuildEngineOptions(AllowOptimizedMount: true));
     public bool AllowCleanup { get; set; } = true;
-    public BuildFixture(int build = 29689, string architecture = "x64")
+    public BuildFixture(int build = 19045, string architecture = "x64")
     {
         Directory.CreateDirectory(Path.Combine(Source, "sources"));
         Directory.CreateDirectory(Path.Combine(Source, @"efi\microsoft\boot"));
@@ -330,7 +327,7 @@ internal sealed class FakeRunner(int build, string architecture, List<string> ev
             if (!args.Any(a => a.StartsWith("/Index:")))
                 return Result(boot ? "Index : 1\nIndex : 2\n" : file.Contains(@"\source\") ? "Index : 3\n" : "Index : 1\n");
             return Result($"Deployment Image Servicing and Management tool\nVersion: 10.0.99999.1000\n" +
-                $"Name : {(boot ? (args.Contains("/Index:1") ? "Microsoft Windows PE" : "Microsoft Windows Setup") : "Windows 11 Pro")}\nDescription : Image\n" +
+                $"Name : {(boot ? (args.Contains("/Index:1") ? "Microsoft Windows PE" : "Microsoft Windows Setup") : "Windows 10 Pro")}\nDescription : Image\n" +
                 $"Architecture : {architecture}\nVersion : 10.0.{build}\nServicePack Build : 123\n" +
                 $"Edition : Professional\nInstallation : Client\nSize : 16,000,000,000 bytes\n");
         }

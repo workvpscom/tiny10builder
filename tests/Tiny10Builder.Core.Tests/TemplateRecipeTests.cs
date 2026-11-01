@@ -101,7 +101,7 @@ public sealed class TemplateRecipeTests
         };
 
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Engine.BuildAsync(recipe, null, CancellationToken.None));
-        Assert.Contains("Windows 11 x64", error.Message);
+        Assert.Contains("Windows 10 client image", error.Message);
         Assert.Contains(fixture.Runner.Calls, call => call.Contains("/Get-WimInfo"));
         Assert.DoesNotContain(fixture.Runner.Calls, call => call.Contains("/Export-Image"));
         Assert.False(Directory.Exists(recipe.WorkspacePath));

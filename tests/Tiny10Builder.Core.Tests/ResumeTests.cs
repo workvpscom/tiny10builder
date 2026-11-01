@@ -100,7 +100,7 @@ public sealed class ResumeTests
         }
         Assert.Equal(fixture.Recipe.ImageIndex, checkpoint.Source.ImageIndex);
         Assert.Equal("install.wim", checkpoint.Source.InstallFile);
-        Assert.Equal(29689, checkpoint.Image.Version.Build);
+        Assert.Equal(19045, checkpoint.Image.Version.Build);
         Assert.False(checkpoint.Report.UsedOptimizedMount);
         Assert.Equal(checkpoint.StagedMedia.Count, checkpoint.StagedMedia.Select(file => file.RelativePath).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         var commit = Assert.Single(checkpoint.Operations, item => item.Id == "stage:Commit");

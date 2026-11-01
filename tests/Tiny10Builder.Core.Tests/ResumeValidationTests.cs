@@ -35,7 +35,7 @@ public sealed class ResumeValidationTests
     public void The_real_host_holds_a_resume_to_its_own_free_space_requirement()
     {
         using var fixture = new BuildFixture();
-        var image = new WindowsImage(1, "Windows 11 Pro", "", "x64", new Version(10, 0, 22621, 1), "Professional", "Client", 1);
+        var image = new WindowsImage(1, "Windows 10 Pro", "", "x64", new Version(10, 0, 19045, 1), "Professional", "Client", 1);
         var recipe = fixture.Recipe with { DismPath = ToolLocator.FindDism(), OutputPath = "" };
         Directory.CreateDirectory(recipe.WorkspacePath);
         var host = new BuildHost();
@@ -48,7 +48,7 @@ public sealed class ResumeValidationTests
     public void Older_hosts_keep_working_because_resume_validation_falls_back_to_the_normal_image_check()
     {
         IBuildHost host = new FakeHost();
-        var image = new WindowsImage(1, "Windows 11 Pro", "", "x64", new Version(10, 0, 22621, 1), "Professional", "Client", 1);
+        var image = new WindowsImage(1, "Windows 10 Pro", "", "x64", new Version(10, 0, 19045, 1), "Professional", "Client", 1);
         host.ValidateResume(new BuildRecipe(), image, 1);
         Assert.Throws<InvalidDataException>(() => host.ValidateResume(new BuildRecipe(), image with { Installation = "Server" }, 1));
     }

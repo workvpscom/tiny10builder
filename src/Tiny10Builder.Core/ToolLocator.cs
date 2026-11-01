@@ -60,6 +60,7 @@ public static class ToolLocator
 
     internal static int ServicingBase(int build) => build switch
     {
+        19042 or 19043 or 19044 or 19045 => 19041, // Windows 10 20H2-22H2 share the 2004 servicing core.
         22631 => 22621,                  // 23H2 enables features on the 22H2 core.
         26200 or 26300 => 26100,         // 25H2 and 26H2 share the 24H2 core.
         _ => build                      // Never infer compatibility for an unknown Insider build.
@@ -103,7 +104,7 @@ public static class ToolLocator
             (version.Minor < image.Version.Minor || version.Minor == image.Version.Minor && actual < required))
             throw new InvalidOperationException($"This image is build {image.Version.Build} (servicing base {required}), " +
                 $"but the installed image tools are version {version}. " +
-                "Windows 10 can build Windows 11 images with compatible tools. Install the current Windows ADK Deployment Tools " +
+                "Install the current Windows ADK Deployment Tools " +
                 "and its servicing updates, then reopen the app; it detects them automatically. " +
                 "Unknown Insider/Canary builds may need a preview ADK or a newer host. " +
                 "Download: https://learn.microsoft.com/windows-hardware/get-started/adk-install");

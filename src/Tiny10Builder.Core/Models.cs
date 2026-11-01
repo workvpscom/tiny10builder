@@ -27,14 +27,14 @@ public sealed record WindowsImage(
     Version Version, string Edition, string Installation, long Size)
 {
     public string Summary => $"{Name}  |  {Architecture}  |  build {Version.Build}.{Version.Revision}";
-    public bool IsSupported => Index > 0 && Size > 0 && Version.Major == 10 && Version.Build >= 22621 &&
-        Installation.Equals("Client", StringComparison.OrdinalIgnoreCase) && Architecture is "x64" or "arm64";
+    public bool IsSupported => Index > 0 && Size > 0 && Version.Major == 10 && Version.Build == 19045 &&
+        Installation.Equals("Client", StringComparison.OrdinalIgnoreCase) && Architecture == "x64";
 
     public void Validate()
     {
         if (!IsSupported)
             throw new InvalidDataException(
-                "Choose a Windows 11 client image, build 22621 (22H2) or newer, in x64 or ARM64 format.");
+                "Choose a Windows 10 client image, version 22H2 (build 19045), in x64 format.");
     }
 }
 

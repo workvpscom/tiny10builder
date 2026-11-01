@@ -9,25 +9,33 @@ namespace Tiny10Builder.Core.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class CompatibilityTests
 {
-    [Theory]
-    [InlineData(22621, "x64")]
-    [InlineData(22621, "arm64")]
-    [InlineData(22631, "x64")]
-    [InlineData(26100, "arm64")]
-    [InlineData(26200, "x64")]
-    [InlineData(26300, "arm64")]
-    [InlineData(28000, "x64")]
-    [InlineData(29689, "arm64")]
-    [InlineData(99999, "x64")]
-    public void Accepts_22H2_through_newer_and_Canary_without_an_upper_limit(int build, string architecture) =>
-        Image(build, architecture).Validate();
+    [Fact]
+    public void Accepts_Windows_10_22H2_Pro_x64()
+    {
+        var image = Image(19045, "x64");
+        Assert.True(image.IsSupported);
+        image.Validate();
+    }
 
     [Theory]
-    [InlineData(22000, "x64", "Client")]
-    [InlineData(22621, "x86", "Client")]
-    [InlineData(29689, "arm64", "Server")]
-    public void Rejects_non_supported_image_families(int build, string architecture, string installation) =>
-        Assert.Throws<InvalidDataException>(() => (Image(build, architecture) with { Installation = installation }).Validate());
+    [InlineData(22621, "x64")]
+    [InlineData(22631, "x64")]
+    [InlineData(26100, "x64")]
+    [InlineData(19044, "x64")]
+    [InlineData(19045, "arm64")]
+    [InlineData(22621, "arm64")]
+    [InlineData(19045, "x86")]
+    public void Rejects_everything_but_build_19045_x64(int build, string architecture)
+    {
+        var image = Image(build, architecture);
+        Assert.False(image.IsSupported);
+        var error = Assert.Throws<InvalidDataException>(() => image.Validate());
+        Assert.Contains("Windows 10", error.Message);
+    }
+
+    [Fact]
+    public void Rejects_server_installations() =>
+        Assert.Throws<InvalidDataException>(() => (Image() with { Installation = "Server" }).Validate());
 
     [Fact]
     public void Parses_actual_build_revision_and_empty_description()
@@ -296,6 +304,6 @@ public sealed class CompatibilityTests
         await Assert.ThrowsAsync<InvalidDataException>(() => IsoStructure.ValidateAsync(new MemoryStream(new byte[34817]), CancellationToken.None));
     }
 
-    public static WindowsImage Image(int build = 29689, string architecture = "x64") =>
-        new(3, "Windows 11 Pro", "", architecture, new Version(10, 0, build, 123), "Professional", "Client", 16L * 1024 * 1024 * 1024);
+    public static WindowsImage Image(int build = 19045, string architecture = "x64") =>
+        new(3, "Windows 10 Pro", "", architecture, new Version(10, 0, build, 123), "Professional", "Client", 16L * 1024 * 1024 * 1024);
 }

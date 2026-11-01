@@ -85,10 +85,10 @@ public sealed class ResumeRefusalTests
     [Fact]
     public async Task A_working_image_that_is_not_the_recorded_windows_image_is_refused()
     {
-        using var fixture = new BuildFixture(26300, "x64");
+        using var fixture = new BuildFixture();
         var job = await JobScenarios.InterruptAtCommitAsync(fixture);
         // The runner now reports another build for every image, as if the file were a different image with the same bytes.
-        using var other = new BuildFixture(22631, "x64");
+        using var other = new BuildFixture(19044, "x64");
         var engine = new BuildEngine(other.Runner, new FakeMediaFactory(), other.Registry, other.Operations, new FakeHost());
         var refused = await Assert.ThrowsAsync<InvalidDataException>(() => engine.ResumeAsync(
             JobScenarios.JobFile(job), JobScenarios.OriginalRecipe(job.WorkDirectory), null, CancellationToken.None));

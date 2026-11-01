@@ -15,6 +15,8 @@ public sealed class ServicingVersionTests
     [InlineData(26100, 9457, 26300)]
     [InlineData(26100, 1, 26200)]
     [InlineData(22621, 1, 22631)]
+    [InlineData(19041, 1, 19045)]
+    [InlineData(19045, 1, 19045)]
     [InlineData(26100, 1, 22631)]
     [InlineData(29691, 1, 26300)]
     [InlineData(29691, 1, 29691)]
@@ -40,7 +42,7 @@ public sealed class ServicingVersionTests
             ToolLocator.EnsureServicingVersion(new Version(10, 0, tool, 1000), Image(build)));
         Assert.Contains($"build {build}", error.Message);
         Assert.Contains("detects them automatically", error.Message);
-        Assert.Contains("Windows 10", error.Message);
+        Assert.Contains("Windows ADK", error.Message);
         Assert.DoesNotContain("Select a matching", error.Message);
     }
 

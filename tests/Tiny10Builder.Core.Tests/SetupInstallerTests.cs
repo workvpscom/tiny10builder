@@ -79,11 +79,8 @@ public sealed class SetupInstallerTests
     }
 
     [Theory]
-    [InlineData(false, 22621, "x64")]
-    [InlineData(false, 26100, "arm64")]
-    [InlineData(false, 26300, "x64")]
-    [InlineData(true, 29691, "x64")]
-    [InlineData(true, 26300, "arm64")]
+    [InlineData(false, 19045, "x64")]
+    [InlineData(true, 19045, "x64")]
     public async Task Core_and_custom_component_deletion_force_boot_edit_without_hardware_bypass(bool custom, int build, string architecture)
     {
         using var fixture = new BuildFixture(build, architecture);

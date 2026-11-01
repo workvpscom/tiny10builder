@@ -133,7 +133,7 @@ public sealed partial class BuildEngine
         var image = await metadataDism.GetImageAsync(sourceWim, recipe.ImageIndex, token).ConfigureAwait(false);
         host.ValidateImage(recipe, image);
         if (recipe.TemplateProfile != TemplateProfile.None && (image.Architecture != "x64" || !image.IsSupported))
-            throw new InvalidDataException("The Proxmox template profile requires a supported Windows 11 x64 client image.");
+            throw new InvalidDataException("The Proxmox template profile requires a supported Windows 10 x64 client image.");
         var efiRelative = new[] { @"efi\microsoft\boot\efisys.bin", @"efi\microsoft\boot\efisys_noprompt.bin" }
             .FirstOrDefault(p => File.Exists(Path.Combine(media.RootPath, p))) ??
             throw new InvalidDataException("The source does not contain a supported UEFI boot image.");
@@ -199,7 +199,6 @@ public sealed partial class BuildEngine
                 $"({(!recipe.TurboMode ? "Turbo is off" : !options.AllowOptimizedMount ? "lazy mounting is opt-in and not enabled" : "host opt-in")}); " +
                 $"copy workers={execution.CopyWorkers}; intermediate={workingCompression}.");
             Log("Policies are verified as offline registry values, not as guarantees of Windows behavior. Build/edition support varies.");
-            if (image.Version.Build > 26100) Log("Newer/Insider builds require matching tools; no boot certification is implied.");
             if (recipe.Flavor == BuildFlavor.Core || recipe.ExpertActions.Length > 0)
                 Log("WARNING: Core/expert output may not boot, update, recover, or provide antivirus protection. Test in an isolated VM.");
             Stage("Copy media", "Copying setup media, excluding the original multi-edition installation image.");

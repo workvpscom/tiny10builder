@@ -10,8 +10,7 @@ public static class ImageDefaults
                 if (images[i].Index == saved) return i;
         for (var i = 0; i < images.Count; i++)
             if (images[i].Edition.Equals("Professional", StringComparison.OrdinalIgnoreCase) ||
-                images[i].Name.Equals("Windows 11 Pro", StringComparison.OrdinalIgnoreCase)) return i;
-        for (var i = 0; i < images.Count; i++) if (images[i].Index == 1) return i;
-        throw new InvalidDataException("Neither Windows 11 Pro nor image index 1 exists in this source.");
+                images[i].Name.Equals("Windows 10 Pro", StringComparison.OrdinalIgnoreCase)) return i;
+        throw new InvalidDataException("No Windows 10 Pro image in this source.");
     }
 }
