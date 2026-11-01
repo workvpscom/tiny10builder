@@ -15,12 +15,12 @@ tiny10builder builds a Windows 10 22H2 **Core** installation ISO and a Proxmox `
 
 ## Quick start
 
-1. Prepare `recipe.json` (Core, `TemplateProfile` `ProxmoxCloudbaseInit`) and extract the Windows 10 ISO to a folder.
+1. Copy [docs/recipe.proxmox-core.json](docs/recipe.proxmox-core.json) to `recipe.json` (Core, `TemplateProfile` `ProxmoxCloudbaseInit`, `ImageIndex` 6 = Windows 10 Pro on the official ISO; the JSON field `SelectedOptions` must equal the Core option set, so do not edit it) and extract the Windows 10 ISO to a folder.
 2. Build the ISO on the Windows host with the CLI below.
 3. Upload the ISO to the node and run `scripts/proxmox/create-source-vm.sh`.
 4. Install from the ISO; Audit and Sysprep finish by themselves and the VM powers off.
 5. Run `scripts/proxmox/offline-inspect.sh`, then `scripts/proxmox/backup.sh`.
-6. Restore with `scripts/proxmox/restore-accept.sh`, set cloud-init, start. Details: [docs/proxmox-template.md](docs/proxmox-template.md).
+6. Restore with `scripts/proxmox/restore-accept.sh`, set cloud-init, then start. Details: [docs/proxmox-template.md](docs/proxmox-template.md).
 
 ## CLI
 

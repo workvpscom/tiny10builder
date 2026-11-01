@@ -4,11 +4,11 @@
 
 ## Scope
 
-tiny10builder build một ISO cài đặt Windows 10 22H2 **Core** có ghim sẵn Cloudbase-Init, QEMU Guest Agent, driver VirtIO storage/serial, giữ lại Microsoft Edge, và tự chạy Audit rồi Sysprep shutdown. Sản phẩm thứ hai là archive `vzdump` của VM đã seal. Cách làm được kế thừa từ bản fork tiny11builder (Windows 11) của tác giả; không cần patch sau khi cài, không sửa node Proxmox, không cần `cicustom`.
+tiny10builder build một ISO cài đặt Windows 10 22H2 **Core** có ghim sẵn Cloudbase-Init, QEMU Guest Agent, driver VirtIO storage/serial, giữ lại Microsoft Edge, và tự chạy Audit rồi Sysprep shutdown. Sản phẩm thứ hai là archive `vzdump` của VM đã seal. Cách làm được kế thừa từ bản fork tiny11builder (Windows 11) của tác giả; không cần patch sau khi cài, không sửa node Proxmox, không cần `cicustom`. Các tên nội bộ như thư mục job `tiny11-<guid>`, thư mục staging `tiny11-template`, `C:\ProgramData\Tiny11Template` và chế độ recipe `Tiny11Core` được kế thừa từ bản fork Windows 11 và giữ nguyên để tương thích.
 
 Archive giao ra là một **bản backup VM thông thường**, không phải Proxmox template. Restore và start trực tiếp. Không chạy `qm template`, không clone trong quy trình này, không dùng `cicustom`.
 
-> Core gỡ các thành phần WinSxS, WinRE, Windows Update và Defender, và việc gỡ này không đảo ngược được. Image Core không thể servicing sau khi build. Licensing và activation là trách nhiệm của người vận hành.
+> Core gỡ các thành phần WinSxS và WinRE, đồng thời vô hiệu hoá service và policy của Windows Update và Defender; việc gỡ này không đảo ngược được. Image Core không thể servicing sau khi build. Licensing và activation là trách nhiệm của người vận hành.
 
 ## Build the ISO
 
@@ -16,7 +16,7 @@ Build trên máy Windows 10 có .NET 8 SDK và DISM. Lần chạy đã đo dùng
 
 Media nguồn: `Win10_22H2_English_x64v1.iso` (6,140,975,104 byte), Windows 10 Pro (index 6). DISM báo Version 10.0.19041 / ServicePack Build 2965 (19041.2965); guest đã cài báo 10.0.19045 sau khi servicing.
 
-Các trường recipe đã dùng:
+Các trường recipe đã dùng (recipe đầy đủ và hợp lệ có ở [recipe.proxmox-core.json](recipe.proxmox-core.json); trường JSON `SelectedOptions` phải đúng bằng tập option của Core, và `ImageIndex` phải là index của Windows 10 Pro, tức `6` trên ISO này; builder kiểm tra index Pro trước khi tải bất cứ thứ gì và nêu rõ index đó nếu bạn chọn image khác):
 
 | Trường | Giá trị |
 | --- | --- |
@@ -24,7 +24,7 @@ Các trường recipe đã dùng:
 | `Flavor` | `Core` |
 | `Mode` | `Tiny11Core` |
 | `CoreAcknowledged` | `true` |
-| Options | 30 option của `CleanupCatalog.ForMode(Tiny11Core)` |
+| `SelectedOptions` | 30 option của `CleanupCatalog.ForMode(Tiny11Core)`, liệt kê trong file ví dụ |
 | `RemoveRedundantData` | `true` |
 | `TemplateProfile` | `ProxmoxCloudbaseInit` |
 | `Compression` | `Recovery` |
@@ -40,7 +40,7 @@ Exit code: 0 thành công, 1 build lỗi hoặc bị huỷ, 2 lỗi validation/c
 Builder tải và ghim những gì:
 
 - `oscdimg.exe` được tải từ `msdl.microsoft.com` khi thiếu, ghim SHA-256 `2000160B2C5044691B2F9A0AC308E5207F273D4880A572457AF16D05886BA861`; lần chạy đã đo làm việc này khi có sự đồng ý của người vận hành.
-- MSI Cloudbase-Init 1.1.9 và QEMU Guest Agent 110.2.3 được tải và kiểm tra hash cùng chữ ký.
+- MSI Cloudbase-Init 1.1.9 và QEMU Guest Agent 110.2.3 được tải và kiểm tra SHA-256. MSI của QEMU Guest Agent không có chữ ký nên hash là kiểm tra duy nhất; chỉ Cloudbase-Init được kiểm tra thêm nhà phát hành Authenticode.
 - Driver VirtIO nhúng sẵn (virtio-win 0.1.240, `w10/amd64`) nằm trong mã nguồn. Xem [nguồn gốc driver](virtio-scsi-driver.md).
 
 Thời gian: khoảng 33 phút cho lần chạy hoàn chỉnh đầu tiên. Các bước cuối là dọn component kèm ResetBase, sửa `boot.wim` (`vioscsi` ở mọi index), nén recovery thành `install.esd`, và `oscdimg`.
@@ -51,11 +51,11 @@ ISO đầu ra `tiny10-core-proxmox-win10-v1.iso`: 3,169,628,160 byte.
 SHA-256: 2CB4BD513AF81B506FD979C3FF2D56B54A3F20D0A059A7D7D2F64D79E137FD67
 ```
 
-`report.json` ghi SourceBuild 10.0.19041.2965, EdgePreserved true, WebView2Present false. Chuyển ISO từ build host sang node bằng sendme 0.36.0 mất 96 giây cho 3 GB; SHA-256 được kiểm tra lại trên node.
+`report.json` ghi SourceBuild 10.0.19041.2965, EdgePreserved true, WebView2Present false. `EdgePreserved` được suy ra từ profile của recipe (ý định), không đo trên image, còn `WebView2Present` chỉ là giá trị giữ chỗ luôn bằng false vì không có gì phát hiện WebView2. Chuyển ISO từ build host sang node bằng sendme 0.36.0 mất 96 giây cho 3 GB; SHA-256 được kiểm tra lại trên node.
 
 ## Install and seal the source VM
 
-Tạo VM nguồn bằng `scripts/proxmox/create-source-vm.sh <vmid> <iso-volid> [--storage local-lvm] [--bridge vmbr1]`. Script từ chối VMID dưới 9200 và VMID đã tồn tại, và không bao giờ start VM. Phần cứng được tạo (ví dụ VMID 9210):
+Tạo VM nguồn bằng `scripts/proxmox/create-source-vm.sh <vmid> <iso-volid> [--storage local-lvm] [--bridge vmbr1]`. Script từ chối VMID dưới 9200 và VMID đã tồn tại, chỉ nhận `--storage local-lvm`, dừng (exit 3) khi `local-lvm` không active, không đọc được hoặc còn dưới 40 GiB trống (thin pool dùng chung với các VM khác), và không bao giờ start VM. Phần cứng được tạo (ví dụ VMID 9210):
 
 | Thiết lập | Giá trị |
 | --- | --- |
@@ -94,7 +94,7 @@ Backup:
 scripts/proxmox/backup.sh <vmid> <dumpdir>
 ```
 
-`<dumpdir>` phải tồn tại và còn trống hơn 12 GB, còn `<dumpdir>/dump` thì chưa được tồn tại. `backup.sh` yêu cầu thư mục `offline-evidence` ở trên (`inspect.exit` bằng `0` và kiểm tra bằng chứng Sysprep đạt) và VM đang tắt. Exit code: 2 sai tham số, 3 VM đang chạy hoặc không đủ dung lượng trống, các giá trị khác khác 0 nghĩa là một kiểm tra thất bại.
+`<dumpdir>` phải là đường dẫn tuyệt đối của một thư mục đã tồn tại và còn trống hơn 12 GB (từ chối `/` và thư mục dump toàn node `/var/lib/vz/dump`), còn `<dumpdir>/dump` thì chưa được tồn tại. `backup.sh` yêu cầu thư mục `offline-evidence` ở trên (`inspect.exit` bằng `0` và kiểm tra bằng chứng Sysprep đạt) và VM đang tắt. `offline-inspect.sh` còn ghi `vmid.txt` và `scsi0-volume.txt`; trước mọi thay đổi `backup.sh` yêu cầu `vmid.txt` bằng VMID truyền vào và volume `scsi0` hiện tại bằng `scsi0-volume.txt`, nên bằng chứng của VM khác bị từ chối. Exit code: 2 sai tham số, 3 VM đang chạy hoặc không đủ dung lượng trống, các giá trị khác khác 0 nghĩa là một kiểm tra thất bại.
 
 **Cảnh báo: hook trong `/etc/vzdump.conf`.** `/etc/vzdump.conf` của node có thể khai báo một hook script xoá hoặc upload archive hay xoá các backup cũ. Vì vậy script luôn truyền `--script /bin/true`; đây là bắt buộc. Dòng lệnh đã đo:
 
@@ -118,12 +118,12 @@ SHA-256: 466e11da2f768c05226dae202f3a62a0ef9617e361c856e53ae60e2eb9dac8e2
 
 ```bash
 sha256sum vzdump-qemu-9210-2026_11_01-20_53_50.vma.zst
-scripts/proxmox/restore-accept.sh <archive.vma.zst> <newvmid> <name> [--storage local-lvm] [--start]
+scripts/proxmox/restore-accept.sh <archive.vma.zst> <newvmid> <name> [--storage local-lvm]
 # restore thủ công tương đương:
 qmrestore <archive> <newvmid> --storage <storage> --unique 1
 ```
 
-`restore-accept.sh` từ chối VMID dưới 9200, VMID đã tồn tại, tên máy không hợp lệ hoặc dài quá 15 ký tự (chỉ chữ, số và dấu gạch ngang, không toàn số, không có gạch ngang ở đầu/cuối) và archive hỏng. Script restore với `--unique 1`, dừng nếu kết quả là template, đổi tên VM, rồi in các lệnh cloud-init; script không nhận và không lưu mật khẩu. Lần restore đã đo mất 3 phút 35 giây.
+`restore-accept.sh` từ chối VMID dưới 9200, VMID đã tồn tại, tên máy không hợp lệ hoặc dài quá 15 ký tự (chỉ chữ, số và dấu gạch ngang, không toàn số, không có gạch ngang ở đầu/cuối) archive hỏng, storage khác `local-lvm`, và `local-lvm` còn dưới 40 GiB trống (exit 3). Script restore với `--unique 1`, dừng nếu kết quả là template, đổi tên VM, rồi in các lệnh cloud-init; script không nhận, không lưu mật khẩu và không bao giờ start VM. Lần restore đã đo mất 3 phút 35 giây.
 
 Đặt các tuỳ chọn Cloud-Init sau **trước lần start đầu tiên** (tự chọn mật khẩu):
 
@@ -168,7 +168,7 @@ Cmdlet đã xác nhận còn trên image đã cắt: `Get-NetIPAddress`, `Get-Ne
 ## Limitations
 
 - Phiên RDP có xác thực (xfreerdp/mstsc) **chưa** được chạy; chỉ kiểm tra RDP listener, thiết lập NLA và pin chứng chỉ.
-- Day-2 reconciliation (đổi hostname/password/IP sau first boot), mở rộng đĩa và load test không được lặp lại (giống Windows 11 v21+).
+- Day-2 reconciliation (đổi hostname/password/IP sau first boot), mở rộng đĩa và load test không được lặp lại.
 - Đây không phải chứng nhận live-backup/VSS; backup lấy từ VM đã tắt. Chỉ một server; không test trên node thứ hai.
 - WebView2 không có trong media nguồn và không được cung cấp (không bắt buộc).
 - Windows 10 22H2 đã hết mainstream support (14/10/2025). Core không thể servicing sau khi build. Media là bản tháng 5/2023 (bên trong Edge 92); Edge chỉ tự cập nhật nếu EdgeUpdate chạy được và VM có online.
@@ -181,5 +181,5 @@ Cmdlet đã xác nhận còn trên image đã cắt: `Get-NetIPAddress`, `Get-Ne
 - **DISM bị từ chối phiên bản trên host Windows 10 (số 6.2.x).** Banner DISM ghi 10.0.19041.844, nhưng các DLL servicing có sẵn (`dismcore.dll`, `DismApi.dll`) mang file version cũ 6.2.19041.746. Builder chuẩn hoá phiên bản tool có Major 6, Minor 2 và Build >= 10240 thành `10.0.<Build>.<Revision>` trước khi so với image; tool Windows 8/8.1 thật (Build < 10240) vẫn bị từ chối.
 - **Metadata build 19041 so với 19045.** DISM báo 19041 cho cả họ 2004/20H2/21H1/21H2/22H2. Windows 10 22H2 là enablement package trên nền servicing 2004, nên guest chỉ báo 19045 sau khi servicing. Builder chấp nhận build Client x64 từ 19041 đến 19045 và từ chối Windows 11 (22000+), build cũ hơn, x86/arm64 và Server.
 - **Thiếu `oscdimg.exe`.** Builder tải từ `msdl.microsoft.com` và kiểm tra SHA-256 đã ghim ở trên; lần chạy đã đo làm việc này khi có sự đồng ý của người vận hành.
-- **`sendme` trên Windows cần Visual C++ runtime.** Do tác giả báo lại cho build host Windows (lần truyền đã đo dùng sendme 0.36.0). Chưa được kiểm chứng độc lập ở đây, và nội dung lỗi chính xác không được ghi lại.
+- **`sendme` trên Windows cần Visual C++ runtime.** Đã kiểm chứng trên build host Windows 10: `sendme.exe` 0.36.0 thoát với mã `0xC0000135` (-1073741515, thiếu DLL, `VCRUNTIME140.dll`) cho đến khi cài Microsoft Visual C++ Redistributable x64; sau đó chạy bình thường.
 - **`finalization-status.json` hiện `SysprepStarting`.** Đây là kết quả bình thường trong lần chạy đã đo (Sysprep `/shutdown` chạy đua với lần ghi cuối); xem quy tắc bằng chứng Sysprep ở trên. Hãy kiểm tra `Sysprep_succeeded.tag`, đừng chỉ nhìn file JSON.

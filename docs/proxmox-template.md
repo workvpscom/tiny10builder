@@ -4,11 +4,11 @@ English (default) | [Tiếng Việt](proxmox-template.vi.md)
 
 ## Scope
 
-tiny10builder builds a Windows 10 22H2 **Core** installation ISO with pinned Cloudbase-Init, QEMU Guest Agent, VirtIO storage/serial drivers, Microsoft Edge kept, and automatic Audit preparation followed by Sysprep shutdown. A Proxmox `vzdump` archive of the sealed VM is the second deliverable. The approach is derived from the maintainer's tiny11builder (Windows 11) fork; no post-install patch, Proxmox node modification, or `cicustom` is required.
+tiny10builder builds a Windows 10 22H2 **Core** installation ISO with pinned Cloudbase-Init, QEMU Guest Agent, VirtIO storage/serial drivers, Microsoft Edge kept, and automatic Audit preparation followed by Sysprep shutdown. A Proxmox `vzdump` archive of the sealed VM is the second deliverable. The approach is derived from the maintainer's tiny11builder (Windows 11) fork; no post-install patch, Proxmox node modification, or `cicustom` is required. Internal names such as the `tiny11-<guid>` job folders, the `tiny11-template` staging folder, `C:\ProgramData\Tiny11Template` and the `Tiny11Core` recipe mode are inherited from the Windows 11 fork and kept for compatibility.
 
 The delivered archive is an **ordinary VM backup**, not a Proxmox template. Restore and start it directly. Do not run `qm template`, do not clone it as part of this workflow, and do not use `cicustom`.
 
-> Core removes WinSxS components, WinRE, Windows Update and Defender, and the removal is irreversible. A Core image cannot be serviced after the build. Licensing and activation remain the operator's responsibility.
+> Core removes WinSxS components and WinRE, and disables the Windows Update and Defender services and policies; the removal is irreversible. A Core image cannot be serviced after the build. Licensing and activation remain the operator's responsibility.
 
 ## Build the ISO
 
@@ -16,7 +16,7 @@ Build on a Windows 10 host with the .NET 8 SDK and DISM. The measured run used a
 
 Source media: `Win10_22H2_English_x64v1.iso` (6,140,975,104 bytes), Windows 10 Pro (index 6). DISM reports it as Version 10.0.19041 / ServicePack Build 2965 (19041.2965); the installed guest reports 10.0.19045 after servicing.
 
-Recipe fields used:
+Recipe fields used (a complete, valid example is [recipe.proxmox-core.json](recipe.proxmox-core.json); the JSON field `SelectedOptions` must equal the Core option set exactly, and `ImageIndex` must be the index of Windows 10 Pro, which is `6` on this ISO; the builder checks the Pro index before it downloads anything and names it if you pick another image):
 
 | Field | Value |
 | --- | --- |
@@ -24,7 +24,7 @@ Recipe fields used:
 | `Flavor` | `Core` |
 | `Mode` | `Tiny11Core` |
 | `CoreAcknowledged` | `true` |
-| Options | the 30 options of `CleanupCatalog.ForMode(Tiny11Core)` |
+| `SelectedOptions` | the 30 options of `CleanupCatalog.ForMode(Tiny11Core)`, listed in the example file |
 | `RemoveRedundantData` | `true` |
 | `TemplateProfile` | `ProxmoxCloudbaseInit` |
 | `Compression` | `Recovery` |
@@ -40,7 +40,7 @@ Exit codes: 0 success, 1 build failure or cancellation, 2 validation/usage error
 What the builder downloads and pins:
 
 - `oscdimg.exe` is downloaded from `msdl.microsoft.com` when missing, pinned to SHA-256 `2000160B2C5044691B2F9A0AC308E5207F273D4880A572457AF16D05886BA861`; the measured run did this with the operator's approval.
-- Cloudbase-Init 1.1.9 and QEMU Guest Agent 110.2.3 MSIs are downloaded and verified by hash and signature.
+- Cloudbase-Init 1.1.9 and QEMU Guest Agent 110.2.3 MSIs are downloaded and verified by SHA-256. The QEMU Guest Agent MSI is unsigned, so the hash is its only check; only Cloudbase-Init also gets an Authenticode publisher check.
 - The embedded VirtIO drivers (virtio-win 0.1.240, `w10/amd64`) are bundled with the source. See [driver provenance](virtio-scsi-driver.md).
 
 Duration: about 33 minutes for the first complete run. The final steps are component cleanup with ResetBase, the `boot.wim` edit (`vioscsi` on every index), recovery compression to `install.esd`, and `oscdimg`.
@@ -51,11 +51,11 @@ Output ISO `tiny10-core-proxmox-win10-v1.iso`: 3,169,628,160 bytes.
 SHA-256: 2CB4BD513AF81B506FD979C3FF2D56B54A3F20D0A059A7D7D2F64D79E137FD67
 ```
 
-`report.json` recorded SourceBuild 10.0.19041.2965, EdgePreserved true, WebView2Present false. Transferring the ISO from the build host to the node with sendme 0.36.0 took 96 s for 3 GB; the SHA-256 was verified on the node.
+`report.json` recorded SourceBuild 10.0.19041.2965, EdgePreserved true, WebView2Present false. `EdgePreserved` is derived from the recipe profile (the intent), not measured on the image, and `WebView2Present` is a placeholder that is always false because nothing detects WebView2. Transferring the ISO from the build host to the node with sendme 0.36.0 took 96 s for 3 GB; the SHA-256 was verified on the node.
 
 ## Install and seal the source VM
 
-Create the source VM with `scripts/proxmox/create-source-vm.sh <vmid> <iso-volid> [--storage local-lvm] [--bridge vmbr1]`. It refuses VMIDs below 9200 and existing VMIDs, and never starts the VM. The hardware it creates (example VMID 9210):
+Create the source VM with `scripts/proxmox/create-source-vm.sh <vmid> <iso-volid> [--storage local-lvm] [--bridge vmbr1]`. It refuses VMIDs below 9200 and existing VMIDs, accepts only `--storage local-lvm`, refuses to continue (exit 3) when `local-lvm` is inactive, cannot be read or has less than 40 GiB free (the thin pool is shared with other VMs), and never starts the VM. The hardware it creates (example VMID 9210):
 
 | Setting | Value |
 | --- | --- |
@@ -94,7 +94,7 @@ Backup:
 scripts/proxmox/backup.sh <vmid> <dumpdir>
 ```
 
-`<dumpdir>` must exist with more than 12 GB free, and `<dumpdir>/dump` must not exist. `backup.sh` requires the `offline-evidence` directory above (`inspect.exit` equal to `0` and a passing Sysprep evidence check) and a stopped VM. Exit codes: 2 bad arguments, 3 VM running or too little free space, other non-zero values mean a failed check.
+`<dumpdir>` must be an absolute path of an existing directory with more than 12 GB free (`/` and the node-global `/var/lib/vz/dump` are refused), and `<dumpdir>/dump` must not exist. `backup.sh` requires the `offline-evidence` directory above (`inspect.exit` equal to `0` and a passing Sysprep evidence check) and a stopped VM. `offline-inspect.sh` also records `vmid.txt` and `scsi0-volume.txt`; before any change `backup.sh` requires `vmid.txt` to equal its VMID argument and the live `scsi0` volume to equal `scsi0-volume.txt`, so evidence from another VM is refused. Exit codes: 2 bad arguments, 3 VM running or too little free space, other non-zero values mean a failed check.
 
 **Warning: `/etc/vzdump.conf` hooks.** A node's `/etc/vzdump.conf` can define a hook script that deletes or uploads archives or removes older backups. The script therefore always passes `--script /bin/true`; it is mandatory. The measured command line was:
 
@@ -118,12 +118,12 @@ SHA-256: 466e11da2f768c05226dae202f3a62a0ef9617e361c856e53ae60e2eb9dac8e2
 
 ```bash
 sha256sum vzdump-qemu-9210-2026_11_01-20_53_50.vma.zst
-scripts/proxmox/restore-accept.sh <archive.vma.zst> <newvmid> <name> [--storage local-lvm] [--start]
+scripts/proxmox/restore-accept.sh <archive.vma.zst> <newvmid> <name> [--storage local-lvm]
 # equivalent manual restore:
 qmrestore <archive> <newvmid> --storage <storage> --unique 1
 ```
 
-`restore-accept.sh` refuses a VMID below 9200, an existing VMID, an invalid or longer than 15 character computer name (letters, digits and hyphen only, not all digits, no leading or trailing hyphen) and a corrupt archive. It restores with `--unique 1`, refuses to continue if the result is a template, renames the VM, and prints the cloud-init commands; it takes and stores no password. The measured restore took 3 min 35 s.
+`restore-accept.sh` refuses a VMID below 9200, an existing VMID, an invalid or longer than 15 character computer name (letters, digits and hyphen only, not all digits, no leading or trailing hyphen) and a corrupt archive, any storage other than `local-lvm`, and less than 40 GiB free on `local-lvm` (exit 3). It restores with `--unique 1`, refuses to continue if the result is a template, renames the VM, and prints the cloud-init commands; it takes and stores no password and never starts the VM. The measured restore took 3 min 35 s.
 
 Set these Cloud-Init options **before the first start** (choose the password yourself):
 
@@ -168,7 +168,7 @@ Cmdlets verified present on the trimmed image: `Get-NetIPAddress`, `Get-NetRoute
 ## Limitations
 
 - An authenticated RDP session (xfreerdp/mstsc) was **not** run; only the RDP listener, NLA settings and the certificate pin were verified.
-- Day-2 reconciliation (hostname/password/IP changes after first boot), disk growth and load tests were not repeated (same as Windows 11 v21+).
+- Day-2 reconciliation (hostname/password/IP changes after first boot), disk growth and load tests were not repeated.
 - This is not a live-backup/VSS certification; the backup was taken from a stopped VM. One server only; no second-node test.
 - WebView2 is absent from the source media and is not provided (not required).
 - Windows 10 22H2 is out of mainstream support (14 Oct 2025). Core cannot be serviced after the build. The media is the May 2023 release (Edge 92 inside); Edge updates itself only if EdgeUpdate can run and the VM is online.
@@ -181,5 +181,5 @@ Cmdlets verified present on the trimmed image: `Get-NetIPAddress`, `Get-NetRoute
 - **DISM version rejected on a Windows 10 host (6.2.x numbers).** The DISM banner reads 10.0.19041.844, but the inbox servicing DLLs (`dismcore.dll`, `DismApi.dll`) carry the legacy file version 6.2.19041.746. The builder normalizes a tool version with Major 6, Minor 2 and Build >= 10240 to `10.0.<Build>.<Revision>` before comparing it with the image; genuine Windows 8/8.1 tools (Build < 10240) are still rejected.
 - **Build 19041 versus 19045 metadata.** DISM reports 19041 for the whole 2004/20H2/21H1/21H2/22H2 family. Windows 10 22H2 is an enablement package on the 2004 servicing base, so the guest reports 19045 only after servicing. The builder accepts Client x64 builds 19041 to 19045 and rejects Windows 11 (22000+), older builds, x86/arm64 and Server.
 - **`oscdimg.exe` missing.** The builder downloads it from `msdl.microsoft.com` and checks the pinned SHA-256 above; the measured run did this with the operator's approval.
-- **`sendme` on Windows needs the Visual C++ runtime.** Reported by the maintainer for the Windows build host (the measured transfer used sendme 0.36.0). Not independently verified here, and the exact error text was not recorded.
+- **`sendme` on Windows needs the Visual C++ runtime.** Verified on the Windows 10 build host: `sendme.exe` 0.36.0 exited with code `0xC0000135` (-1073741515, a missing DLL, `VCRUNTIME140.dll`) until the Microsoft Visual C++ Redistributable x64 was installed; it ran afterwards.
 - **`finalization-status.json` shows `SysprepStarting`.** Expected in the measured run (Sysprep `/shutdown` races the last write); see the Sysprep evidence rule above. Check `Sysprep_succeeded.tag`, not the JSON alone.
