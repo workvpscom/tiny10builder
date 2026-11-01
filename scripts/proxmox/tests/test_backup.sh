@@ -38,7 +38,7 @@ for bad in 'cipassword: secret' 'template: 1' 'ciuser: Administrator' 'ipconfig0
   make_evidence "$WORK"
   { cat "$STUB_DIR/default.conf"; echo "$bad"; } >"$T/bad.conf"
   STUB_QM_CONFIG="$T/bad.conf" run bash "$S" 9200 "$WORK"
-  assert_rc_nonzero; assert_not_logged '^vzdump'
+  assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
 done
 
 new_case backup-happy
@@ -47,7 +47,9 @@ run bash "$S" 9200 "$WORK"
 assert_rc 0
 assert_eq "$(grep '^vzdump' "$STUB_LOG")" "vzdump 9200 --mode stop --compress zstd --zstd 1 --bwlimit 65536 --remove 0 --script /bin/true --dumpdir $WORK/dump"
 assert_eq "$(grep -c '^vzdump' "$STUB_LOG")" 1
-assert_logged '^qm set 9200 --ide2 none,media=cdrom --ide0 local-lvm:cloudinit --citype configdrive2'
+assert_eq "$(grep '^qm set' "$STUB_LOG")" "qm set 9200 --ide2 none,media=cdrom --ide0 local-lvm:cloudinit --citype configdrive2 --boot order=scsi0"
+assert_eq "$(grep -c '^boot:' "$WORK"/backup-*/source.conf)" 1
+assert_eq "$(grep '^boot:' "$WORK"/backup-*/source.conf)" "boot: order=scsi0"
 assert_logged '^zstd -t '
 assert_not_logged '^qm start'
 assert_not_logged '^qm template'
@@ -63,6 +65,16 @@ STUB_MUTATE=1 run bash "$S" 9200 "$WORK"
 assert_rc_nonzero
 assert_logged '^vzdump'
 if ls "$WORK"/backup-*/result.txt >/dev/null 2>&1; then fail "result.txt written despite hash mismatch"; else _ok; fi
+
+new_case backup-boot-not-applied
+make_evidence "$WORK"
+STUB_SET_NOOP_BOOT=1 run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_not_logged '^vzdump'
+
+new_case backup-boot-ide2-never-passes
+make_evidence "$WORK"
+STUB_SET_NOOP_BOOT=1 run bash "$S" 9200 "$WORK"
+if ls "$WORK"/backup-*/result.txt >/dev/null 2>&1; then fail "BACKUP_PASS with ide2 boot order"; else _ok; fi
 
 new_case backup-two-archives-or-none
 make_evidence "$WORK"

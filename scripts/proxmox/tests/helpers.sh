@@ -16,7 +16,7 @@ new_case() {
   mkdir -p "$STUB_DIR" "$T/work"
   : >"$STUB_LOG"
   export STUB_DIR STUB_LOG
-  unset STUB_VM_STATE STUB_QM_CONFIG STUB_DF_AVAIL STUB_ZSTD_FAIL STUB_MUTATE STUB_NO_ARCHIVE STUB_SFDISK STUB_FIXTURE
+  unset STUB_VM_STATE STUB_QM_CONFIG STUB_DF_AVAIL STUB_ZSTD_FAIL STUB_MUTATE STUB_NO_ARCHIVE STUB_SFDISK STUB_FIXTURE STUB_SET_NOOP_BOOT
   make_stubs
   PATH="$STUB_DIR:$ORIG_PATH"
   WORK="$T/work"
@@ -38,12 +38,23 @@ CONF
   cat >"$STUB_DIR/qm" <<'EOF2'
 #!/bin/bash
 echo "qm $*" >>"$STUB_LOG"
+live="$STUB_DIR/live.conf"
+[ -f "$live" ] || cp "${STUB_QM_CONFIG:-$STUB_DIR/default.conf}" "$live"
 case "$1" in
   status)
     if [ "${STUB_VM_STATE:-stopped}" = none ]; then echo "Configuration file does not exist" >&2; exit 2; fi
     echo "status: ${STUB_VM_STATE:-stopped}"
     ;;
-  config) cat "${STUB_QM_CONFIG:-$STUB_DIR/default.conf}" ;;
+  config) cat "$live" ;;
+  set)
+    # Model the one effect backup.sh relies on: --boot rewrites the boot line (unless STUB_SET_NOOP_BOOT).
+    while [ $# -gt 0 ]; do
+      if [ "$1" = --boot ] && [ -z "${STUB_SET_NOOP_BOOT:-}" ]; then
+        grep -v '^boot:' "$live" >"$live.new"; echo "boot: $2" >>"$live.new"; mv "$live.new" "$live"
+      fi
+      shift
+    done
+    ;;
 esac
 exit 0
 EOF2

@@ -8,9 +8,10 @@
 #   <dumpdir>/offline-evidence/guest/Tiny11Template/finalization-status.json must contain SysprepReturned
 #   <dumpdir>/offline-evidence/guest/Sysprep/Sysprep_succeeded.tag           must exist
 # Outputs: <dumpdir>/dump/*.vma.zst (new dir, must not pre-exist) and <dumpdir>/backup-<UTC>/ with job.log,
-# source.conf, scsi-before/after.sha256, archive.sha256, archive.path, exit and result.txt (BACKUP_PASS).
+# source-before.conf, source.conf (after qm set), scsi-before/after.sha256, archive.sha256, archive.path, exit and result.txt (BACKUP_PASS).
 # The node's /etc/vzdump.conf hook deletes/uploads archives, so `--script /bin/true` is mandatory below.
-# Never starts the VM, converts it to a template, or touches files outside <dumpdir>.
+# The config is checked before any change (qm set only runs on a clean config) and again after it, which must show
+# `boot: order=scsi0`. Never starts the VM, converts it to a template, or touches files outside <dumpdir>.
 set -Eeuo pipefail
 umask 077
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -45,11 +46,19 @@ trap finish EXIT
 DEV=$(scsi0_device "$VMID")
 [ -z "$(losetup -j "$DEV")" ] || die "$DEV still has a loop device attached" 1
 
-qm set "$VMID" --ide2 none,media=cdrom --ide0 local-lvm:cloudinit --citype configdrive2
+IDENTITY_RE='^(template: 1|ciuser:|cipassword:|ipconfig[0-9]+:|cicustom:|sshkeys:)'
+# Pre-check the current config: a bad config is rejected before any mutation.
+qm config "$VMID" >"$R/source-before.conf"
+if grep -Eq "$IDENTITY_RE" "$R/source-before.conf"; then
+  die "source config carries template/cloud-init identity settings (nothing was changed)" 1
+fi
+qm set "$VMID" --ide2 none,media=cdrom --ide0 local-lvm:cloudinit --citype configdrive2 --boot order=scsi0
+# Re-capture and re-check the final config, including the boot order.
 qm config "$VMID" >"$R/source.conf"
-if grep -Eq '^(template: 1|ciuser:|cipassword:|ipconfig[0-9]+:|cicustom:|sshkeys:)' "$R/source.conf"; then
+if grep -Eq "$IDENTITY_RE" "$R/source.conf"; then
   die "source config carries template/cloud-init identity settings" 1
 fi
+grep -qx 'boot: order=scsi0' "$R/source.conf" || die "source config boot order is not exactly 'order=scsi0'" 1
 BEFORE=$(sha256sum "$DEV")
 printf '%s\n' "$BEFORE" >"$R/scsi-before.sha256"
 
