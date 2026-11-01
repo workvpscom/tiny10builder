@@ -96,12 +96,19 @@ public static class ToolLocator
         EnsureServicingVersion(ServicingVersionOf(dism), image);
     }
 
+    // The inbox Windows 10 servicing DLLs keep the legacy 6.2.<build> file version; treat them as 10.0.<build>.
+    internal static Version NormalizeToolVersion(Version version) =>
+        version.Major == 6 && version.Minor == 2 && version.Build >= 10240
+            ? new Version(10, 0, version.Build, Math.Max(version.Revision, 0))
+            : version;
+
     internal static void EnsureServicingVersion(Version version, WindowsImage image)
     {
         var required = ServicingBase(image.Version.Build);
-        var actual = ServicingBase(version.Build);
-        if (version.Major < image.Version.Major || version.Major == image.Version.Major &&
-            (version.Minor < image.Version.Minor || version.Minor == image.Version.Minor && actual < required))
+        var tool = NormalizeToolVersion(version);
+        var actual = ServicingBase(tool.Build);
+        if (tool.Major < image.Version.Major || tool.Major == image.Version.Major &&
+            (tool.Minor < image.Version.Minor || tool.Minor == image.Version.Minor && actual < required))
             throw new InvalidOperationException($"This image is build {image.Version.Build} (servicing base {required}), " +
                 $"but the installed image tools are version {version}. " +
                 "Install the current Windows ADK Deployment Tools " +

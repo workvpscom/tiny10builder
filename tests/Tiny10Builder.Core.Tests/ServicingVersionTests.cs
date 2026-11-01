@@ -10,6 +10,42 @@ public sealed class ServicingVersionTests
     private static WindowsImage Image(int build) =>
         new(1, "Windows 11 Pro", "", "x64", new(10, 0, build, 9457), "Professional", "Client", 1);
 
+    private static WindowsImage Image10(int build, int revision) =>
+        new(1, "Windows 10 Pro", "", "x64", new(10, 0, build, revision), "Professional", "Client", 1);
+
+    [Fact]
+    public void Windows_10_inbox_tools_with_legacy_6_2_file_version_are_accepted_for_a_19041_image()
+    {
+        ToolLocator.EnsureServicingVersion(new Version(6, 2, 19041, 746), Image10(19041, 2965));
+        ToolLocator.EnsureServicingVersion(new Version(10, 0, 19041, 1), Image10(19041, 2965));
+    }
+
+    [Fact]
+    public void Legacy_6_2_numbered_Windows_10_tools_are_still_checked_against_the_servicing_base()
+    {
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            ToolLocator.EnsureServicingVersion(new Version(6, 2, 19041, 746), Image(22621)));
+        Assert.Contains("6.2.19041.746", error.Message);
+        Assert.Contains("build 22621", error.Message);
+    }
+
+    [Fact]
+    public void Genuine_Windows_8_tools_below_10240_are_still_rejected()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            ToolLocator.EnsureServicingVersion(new Version(6, 3, 9600, 17031), Image10(19041, 2965)));
+        Assert.Throws<InvalidOperationException>(() =>
+            ToolLocator.EnsureServicingVersion(new Version(6, 2, 9200, 0), Image10(19041, 2965)));
+    }
+
+    [Fact]
+    public void NormalizeToolVersion_maps_only_Windows_10_numbered_6_2_servicing_versions()
+    {
+        Assert.Equal(new Version(10, 0, 19041, 746), ToolLocator.NormalizeToolVersion(new Version(6, 2, 19041, 746)));
+        Assert.Equal(new Version(6, 2, 9200, 0), ToolLocator.NormalizeToolVersion(new Version(6, 2, 9200, 0)));
+        Assert.Equal(new Version(10, 0, 22621, 1), ToolLocator.NormalizeToolVersion(new Version(10, 0, 22621, 1)));
+    }
+
     [Theory]
     [InlineData(26100, 6584, 26300)]
     [InlineData(26100, 9457, 26300)]

@@ -6,7 +6,7 @@
 - `install.wim`: 5,181,270,654 bytes, 11 editions, no `ei.cfg`. Windows 10 Pro is **index 6**.
   Indexes: 1 Home, 2 Home N, 3 Home Single Language, 4 Education, 5 Education N, 6 Pro, 7 Pro N,
   8 Pro Education, 9 Pro Education N, 10 Pro for Workstations, 11 Pro N for Workstations.
-- Pro image build: 10.0.19045 (guest OS reports 19045.0 for the DISM host).
+- Pro image build: see "Media build number (Task 3b)" below (DISM reports 10.0.19041.2965; the installed guest reports 19045 only after the enablement package applies).
 
 ## Edge / WebView2 in the Pro image (read-only mount via DISM on build host 9200)
 
@@ -43,3 +43,5 @@ Spike VM 9201 (Q35, OVMF, no TPM, `scsi0` 20G on virtio-scsi-single, e1000), boo
 DISM on the real `Win10_22H2_English_x64v1.iso` reports the Pro image (index 6) as `Version : 10.0.19041` with `ServicePack Build : 2965`, so the parsed image version is 10.0.19041.2965. Windows 10 22H2 is an enablement package on the 2004 servicing base, and DISM reports 19041 for the whole 2004/20H2/21H1/21H2/22H2 family. The installed guest only reports runtime build 19045 after the enablement package applies.
 
 Rule: accept `Version.Major == 10`, build 19041 to 19045 inclusive, Client, x64. Reject Windows 11 (22000+), builds below 19041 (18363, 17763), builds above 19045, x86/arm64 and Server. `ToolLocator.ServicingBase` maps 19041-19045 to 19041.
+
+Host tool facts (Task 3c): on the Windows 10 build host the DISM banner reads `Version: 10.0.19041.844`, but the inbox servicing DLLs (`dismcore.dll` / `DismApi.dll`) carry the legacy file version `6.2.19041.746`. `ToolLocator.NormalizeToolVersion` therefore treats a tool version with Major 6, Minor 2 and Build >= 10240 as `10.0.<Build>.<Revision>` before `EnsureServicingVersion` compares it with the image; genuine Windows 8/8.1 tools (Build < 10240) are still rejected.

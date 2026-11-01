@@ -34,6 +34,7 @@ public sealed class CompatibilityTests
     [InlineData(22621, "x64")]
     [InlineData(22631, "x64")]
     [InlineData(26100, "x64")]
+    [InlineData(19040, "x64")]
     [InlineData(18363, "x64")]
     [InlineData(17763, "x64")]
     [InlineData(19046, "x64")]
