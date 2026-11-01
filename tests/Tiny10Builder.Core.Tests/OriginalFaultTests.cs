@@ -35,8 +35,9 @@ public sealed class OriginalFaultTests
         using var fixture = new BuildFixture();
         using var cancel = new CancellationTokenSource();
         fixture.Runner.OnCommand = args => { if (args.Contains("/Unmount-Image") && args.Contains("/Commit")) cancel.Cancel(); };
+        var recipe = fixture.UseSetupImageEdit(fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = [] });
         var failure = await Assert.ThrowsAsync<BuildFailureException>(() =>
-            fixture.Engine.BuildAsync(fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = [] }, null, cancel.Token));
+            fixture.Engine.BuildAsync(recipe, null, cancel.Token));
         var states = StageStates(failure.WorkDirectory);
         Assert.Equal("Completed", states["Commit"]);
         Assert.NotEqual("Cancelled", states["Setup image"]);

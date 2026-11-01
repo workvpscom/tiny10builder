@@ -145,11 +145,36 @@ public sealed class BuildEngineTests
     }
 
     [Fact]
-    public async Task Core_edits_the_setup_image_without_any_hardware_bypass()
+    public async Task Core_without_the_Proxmox_profile_leaves_boot_wim_alone_and_mounts_only_the_installation_image()
     {
         using var fixture = new BuildFixture();
         await fixture.Engine.BuildAsync(fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = [] }, null, CancellationToken.None);
-        Assert.Equal(2, fixture.Runner.Calls.Count(c => c.Contains("/Mount-Image")));
+        Assert.Single(fixture.Runner.Calls, c => c.Contains("/Mount-Image"));
+        Assert.DoesNotContain(fixture.Runner.Calls, c => c.Any(a => a.StartsWith("/ImageFile:", StringComparison.Ordinal) &&
+            a.EndsWith("boot.wim", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(fixture.Runner.Calls, c => c.Contains("/Add-Driver"));
+    }
+
+    [Fact]
+    public async Task Iso_is_created_with_BIOS_and_UEFI_boot_data_for_x64_media()
+    {
+        using var fixture = new BuildFixture();
+        await fixture.Engine.BuildAsync(fixture.Recipe, null, CancellationToken.None);
+        var oscdimg = Assert.Single(fixture.Runner.Calls, c => c.Any(a => a.StartsWith("-bootdata:", StringComparison.Ordinal)));
+        var bootdata = Assert.Single(oscdimg, a => a.StartsWith("-bootdata:", StringComparison.Ordinal));
+        Assert.StartsWith("-bootdata:2#p0,e,b", bootdata);
+        Assert.Contains(@"boot\etfsboot.com#pEF,e,b", bootdata);
+        Assert.EndsWith(@"efi\microsoft\boot\efisys.bin", bootdata);
+    }
+
+    [Fact]
+    public async Task Media_without_a_BIOS_boot_image_fails_loudly_instead_of_producing_a_UEFI_only_iso()
+    {
+        using var fixture = new BuildFixture();
+        File.Delete(Path.Combine(fixture.Source, @"boot\etfsboot.com"));
+        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(fixture.Recipe, null, CancellationToken.None));
+        Assert.Contains("etfsboot.com", failure.Message);
+        Assert.DoesNotContain(fixture.Runner.Calls, c => c.Any(a => a.StartsWith("-bootdata:", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -233,7 +258,16 @@ internal sealed class BuildFixture : IDisposable
     public FakeRunner Runner { get; }
     public FakeRegistry Registry { get; } = new();
     public FakeOperations Operations { get; }
-    public BuildEngine Engine { get; }
+    public BuildEngine Engine { get; private set; }
+    /// <summary>
+    /// Non-profile builds never edit boot.wim; the Proxmox profile (which does) needs pinned downloads the unit tests do not have.
+    /// This runs the exact same boot.wim stage for a non-profile recipe by forcing it through the engine's internal seam.
+    /// </summary>
+    public BuildRecipe UseSetupImageEdit(BuildRecipe recipe)
+    {
+        Engine = new(Runner, new FakeMediaFactory(), Registry, Operations, new FakeHost(), new BuildEngineOptions { ForceBootEdit = true });
+        return recipe;
+    }
     // Lazy (/Optimize) mounting is a host opt-in; only tests of that seam use this engine.
     public BuildEngine OptInOptimizedEngine => new(Runner, new FakeMediaFactory(), Registry, Operations, new FakeHost(),
         new BuildEngineOptions(AllowOptimizedMount: true));

@@ -5,7 +5,11 @@ namespace Tiny10Builder.Core;
 /// Development seam. Lazy (<c>/Optimize</c>) mounting is never used unless the host opts in. A blind probe cost a real
 /// build about 12 minutes (8m31 mount, DISM 4350 on first access, 3m53 discard) on a host without support.
 /// </param>
-public sealed record BuildEngineOptions(bool AllowOptimizedMount = false);
+public sealed record BuildEngineOptions(bool AllowOptimizedMount = false)
+{
+    /// <summary>Test seam: run the boot.wim edit stage for a build that is not a Proxmox-profile build.</summary>
+    internal bool ForceBootEdit { get; init; }
+}
 
 public sealed record BuildExecutionPlan(bool OptimizedMount, bool FastWorkingImage, int CopyWorkers, bool BufferedLog)
 {

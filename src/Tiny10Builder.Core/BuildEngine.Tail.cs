@@ -99,7 +99,7 @@ public sealed partial class BuildEngine
         var media = MediaManifest.CreateAsync(s.Staging, s.Execution.CopyWorkers, CancellationToken.None);
         await Task.WhenAll(working, media).ConfigureAwait(false);
         var (length, sha) = await working.ConfigureAwait(false);
-        var hasSetup = SetupInstaller.RequiresBootEdit(s.Recipe);
+        var hasSetup = s.SetupPending;
         var checkpoint = new ResumeCheckpoint
         {
             SchemaVersion = ResumeCheckpoint.CurrentSchema,
@@ -160,10 +160,7 @@ public sealed partial class BuildEngine
 
     private async Task ApplySetupImageAsync(BuildSession s, CancellationToken token)
     {
-        var template = s.Recipe.TemplateProfile == TemplateProfile.ProxmoxCloudbaseInit;
-        s.Stage("Setup image", template ? "Adding boot-storage support to Windows PE and Setup." : SetupInstaller.RequiresLegacy(s.Recipe) ?
-            "Enabling the legacy Windows installer required by component-store removals." :
-            "Applying hardware-requirement settings to the Windows Setup boot image.", token);
+        s.Stage("Setup image", "Adding boot-storage support to Windows PE and Setup.", token);
         var bootWim = Path.Combine(s.Staging, @"sources\boot.wim");
         // Edit a private copy. The staged original is replaced atomically only after the copy committed and validated,
         // so an interruption can never leave a half-edited boot.wim in the media.
@@ -173,26 +170,17 @@ public sealed partial class BuildEngine
         var privateBoot = Path.Combine(privateDirectory, "boot.wim");
         File.Copy(bootWim, privateBoot, overwrite: false);
         var bootImages = await s.Dism.GetImagesAsync(privateBoot, token).ConfigureAwait(false);
-        var setup = bootImages.FirstOrDefault(i => i.Name.Contains("Setup", StringComparison.OrdinalIgnoreCase)) ??
-            bootImages.FirstOrDefault(i => i.Index == 2) ??
-            throw new InvalidDataException("Cannot identify Windows Setup in boot.wim.");
         s.Dism.DisableOptimizedMount();
-        // Each bootable PE image needs storage support; Setup-only policy stays on the identified Setup index.
-        // All commits remain private until every index succeeds, so failure/resume repeats the whole transaction.
-        var targets = template ? bootImages : new[] { setup }.AsEnumerable();
-        foreach (var image in targets)
+        // Stock Windows 10 setup.exe is already the classic installer, so boot.wim only needs storage support:
+        // every bootable PE image (index 1 and the Setup index 2) gets vioscsi. All commits remain private until every
+        // index succeeds, so failure/resume repeats the whole transaction.
+        foreach (var image in bootImages)
         {
             s.Mounted = true;
             await s.Dism.RunAsync(token, "/Mount-Image", $"/ImageFile:{privateBoot}", $"/Index:{image.Index}",
                 $"/MountDir:{s.Mount}").ConfigureAwait(false);
-            if (template)
-                await s.Dism.RunAsync(token, "/Add-Driver", $"/Image:{s.Mount}",
-                    $"/Driver:{Path.Combine(s.Staging, "tiny11-template", "drivers", "vioscsi.inf")}").ConfigureAwait(false);
-            if (image.Index == setup.Index)
-            {
-                if (SetupInstaller.RequiresLegacy(s.Recipe))
-                    SetupInstaller.ApplyLegacy(s.Mount, s.Log);
-            }
+            await s.Dism.RunAsync(token, "/Add-Driver", $"/Image:{s.Mount}",
+                $"/Driver:{Path.Combine(s.Staging, "tiny11-template", "drivers", "vioscsi.inf")}").ConfigureAwait(false);
             await s.Dism.RunAsync(token, "/Unmount-Image", $"/MountDir:{s.Mount}", "/Commit").ConfigureAwait(false);
             s.Mounted = false;
         }
@@ -207,8 +195,7 @@ public sealed partial class BuildEngine
         // record cannot be written, the staged original is simply left as it is.
         if (!UpdateCheckpoint(s, saved => saved with
         {
-            SetupState = SetupProgress.Replacing, EditedBootSha256 = editedSha,
-            Report = saved.Report with { LegacyInstallerEnabled = SetupInstaller.RequiresLegacy(s.Recipe) }
+            SetupState = SetupProgress.Replacing, EditedBootSha256 = editedSha
         }))
             throw new IOException("The saved progress could not record the Setup image replacement, so the staged boot.wim was left unchanged.");
         File.Move(privateBoot, bootWim, overwrite: true);
@@ -324,8 +311,9 @@ public sealed partial class BuildEngine
         }
         var bios = Path.Combine(s.Staging, @"boot\etfsboot.com");
         var efi = Path.Combine(s.Staging, s.EfiRelative);
-        var boot = s.Image.Architecture == "x64" && File.Exists(bios) ?
-            $"-bootdata:2#p0,e,b{bios}#pEF,e,b{efi}" : $"-bootdata:1#pEF,e,b{efi}";
+        if (!File.Exists(bios))
+            throw new InvalidDataException(@"The staged media has no BIOS boot image (boot\etfsboot.com), so a BIOS+UEFI ISO cannot be created.");
+        var boot = $"-bootdata:2#p0,e,b{bios}#pEF,e,b{efi}";
         var isoResult = await runner.RunAsync(s.Recipe.OscdimgPath,
             ["-m", "-o", "-u2", "-udfver102", boot, s.Staging, s.TemporaryIso], s.Log, token, finishOnCancellation: false).ConfigureAwait(false);
         if (isoResult.ExitCode != 0 || !File.Exists(s.TemporaryIso) || new FileInfo(s.TemporaryIso).Length < 34816)
@@ -424,7 +412,6 @@ public sealed partial class BuildEngine
             JsonSerializer.Serialize(new
             {
                 SchemaVersion = 1, CompletedUtc = DateTimeOffset.UtcNow, Image = s.Image, recipe.Flavor,
-                LegacyInstallerEnabled = SetupInstaller.RequiresLegacy(recipe),
                 recipe.TemplateProfile, TemplateArtifacts = s.TemplateArtifacts, TemplateManifestSha256 = s.TemplateManifestSha256,
                 recipe.SelectedOptions, recipe.ExpertActions, recipe.Compression, recipe.EnableNetFx3,
                 recipe.TurboMode, recipe.RemoveRedundantData, recipe.OmitNetFx3SetupPayload,

@@ -10,7 +10,7 @@ namespace Tiny10Builder.Core.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class ResumeRefusalTests
 {
-    private static BuildRecipe CoreSetup(BuildFixture fixture) => fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["cortana"] };
+    private static BuildRecipe CoreSetup(BuildFixture fixture) => fixture.UseSetupImageEdit(fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["cortana"] });
 
     private static async Task<InvalidDataException> AssertRefusedAsync(BuildFixture fixture, BuildFailureException job, string fragment,
         BuildRecipe? recipe = null)
@@ -318,10 +318,23 @@ public sealed class ResumeRefusalTests
     {
         using var fixture = new BuildFixture();
         var job = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
-        Rewrite(job.WorkDirectory, saved => saved with
+        Rewrite(job.WorkDirectory, saved => saved with { SetupState = SetupProgress.NotRequired });
+        await AssertRefusedAsync(fixture, job, "does not match");
+    }
+
+    // An older build forced a boot.wim edit for every Core job (legacy installer). That concept is gone, so such a saved job
+    // (Core, no Proxmox profile, Setup pending) fails closed instead of being silently resumed without its boot edit.
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("applied")]
+    public async Task A_saved_non_profile_Core_job_that_still_expects_a_Setup_edit_is_refused(string staleState)
+    {
+        using var fixture = new BuildFixture();
+        var job = await JobScenarios.InterruptAtCommitAsync(fixture, fixture.Recipe with
         {
-            SetupState = SetupProgress.NotRequired, Report = saved.Report with { LegacyInstallerEnabled = true }
+            Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["cortana"]
         });
+        Rewrite(job.WorkDirectory, saved => saved with { SetupState = staleState });
         await AssertRefusedAsync(fixture, job, "does not match");
     }
 

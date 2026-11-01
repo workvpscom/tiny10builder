@@ -12,78 +12,34 @@ public sealed class SetupInstallerTests
     [Theory]
     [InlineData(TemplateProfile.None, false)]
     [InlineData(TemplateProfile.ProxmoxCloudbaseInit, true)]
-    public void Template_profile_requires_boot_edit_without_other_Setup_changes(TemplateProfile profile, bool expected) =>
+    public void Template_profile_alone_requires_boot_edit(TemplateProfile profile, bool expected) =>
         Assert.Equal(expected, SetupInstaller.RequiresBootEdit(new() { Flavor = BuildFlavor.Regular, SelectedOptions = [], TemplateProfile = profile }));
 
-    [Theory]
-    [InlineData(BuildFlavor.Core, true)]
-    [InlineData(BuildFlavor.Regular, false)]
-    public void Legacy_Setup_is_required_by_Core_not_regular_removals(BuildFlavor flavor, bool required)
+    [Fact]
+    public void Win10_media_never_needs_the_legacy_installer_so_Core_and_component_removal_do_not_force_a_boot_edit()
     {
-        Assert.Equal(required, SetupInstaller.RequiresLegacy(new() { Flavor = flavor }));
-        Assert.True(SetupInstaller.RequiresLegacy(new()
+        // Spike result: stock Windows 10 22H2 sources\\setup.exe is already the classic installer and honours autounattend.xml.
+        foreach (var flavor in new[] { BuildFlavor.Core, BuildFlavor.Regular })
+        {
+            var recipe = new BuildRecipe { Flavor = flavor };
+            Assert.False(SetupInstaller.RequiresLegacy(recipe));
+            Assert.False(SetupInstaller.RequiresBootEdit(recipe));
+        }
+        var componentRemoval = new BuildRecipe
         {
             ExpertActions = [new(ImageItemKind.ComponentPayload, "amd64_component", ExpertActionMode.Remove)]
-        }));
-        Assert.False(SetupInstaller.RequiresLegacy(new()
-        {
-            ExpertActions = [new(ImageItemKind.Service, "example", ExpertActionMode.Remove)]
-        }));
+        };
+        Assert.False(SetupInstaller.RequiresLegacy(componentRemoval));
+        Assert.False(SetupInstaller.RequiresBootEdit(componentRemoval));
+        Assert.True(SetupInstaller.RequiresBootEdit(new BuildRecipe { Flavor = BuildFlavor.Core, TemplateProfile = TemplateProfile.ProxmoxCloudbaseInit }));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Legacy_startup_initializes_PE_then_runs_the_matching_classic_installer(bool namedOld)
+    public async Task Core_and_custom_component_deletion_leave_Setup_untouched_without_winpeshl_or_a_legacy_report_flag(bool custom)
     {
         using var fixture = new BuildFixture();
-        var mount = NativeTests.CreateOwnedMount(fixture.Root);
-        Directory.CreateDirectory(Path.Combine(mount, "sources"));
-        File.WriteAllText(Path.Combine(mount, @"sources\setup.exe"), "same-build classic binary");
-        if (namedOld) File.WriteAllText(Path.Combine(mount, @"sources\setup_old.exe"), "explicit classic binary");
-        var configuration = Path.Combine(mount, @"Windows\System32\winpeshl.ini");
-        File.WriteAllText(configuration, "[LaunchApp]\r\nAppPath=%SYSTEMDRIVE%\\sources\\SetupHost.exe\r\n");
-        File.SetAttributes(configuration, FileAttributes.ReadOnly);
-        var messages = new List<string>();
-        SetupInstaller.ApplyLegacy(mount, messages.Add);
-        var ini = File.ReadAllText(Path.Combine(mount, @"Windows\System32\winpeshl.ini"));
-        Assert.Equal("[LaunchApps]\r\n%SYSTEMROOT%\\System32\\wpeinit.exe\r\n%SYSTEMDRIVE%\\sources\\" +
-            (namedOld ? "setup_old.exe" : "setup.exe") + "\r\n", ini);
-        Assert.DoesNotContain("SetupHost", ini);
-        Assert.Single(messages);
-        Assert.Throws<InvalidDataException>(() => SetupInstaller.ApplyLegacy(fixture.Root, messages.Add));
-    }
-
-    [Fact]
-    public void Missing_classic_installer_is_a_loud_failure_not_a_new_installer_fallback()
-    {
-        using var fixture = new BuildFixture();
-        var mount = NativeTests.CreateOwnedMount(fixture.Root);
-        Directory.CreateDirectory(Path.Combine(mount, "sources"));
-        File.WriteAllText(Path.Combine(mount, @"sources\SetupHost.exe"), "new installer only");
-        Assert.Throws<FileNotFoundException>(() => SetupInstaller.ApplyLegacy(mount, _ => { }));
-        Assert.False(File.Exists(Path.Combine(mount, @"Windows\System32\winpeshl.ini")));
-    }
-
-    [Fact]
-    public void Installer_symlinks_are_refused_instead_of_following_a_host_executable()
-    {
-        using var fixture = new BuildFixture();
-        var mount = NativeTests.CreateOwnedMount(fixture.Root);
-        Directory.CreateDirectory(Path.Combine(mount, "sources"));
-        var outside = Path.Combine(fixture.Root, "outside.exe");
-        File.WriteAllText(outside, "must not run");
-        File.CreateSymbolicLink(Path.Combine(mount, @"sources\setup.exe"), outside);
-        Assert.Throws<InvalidDataException>(() => SetupInstaller.ApplyLegacy(mount, _ => { }));
-        Assert.False(File.Exists(Path.Combine(mount, @"Windows\System32\winpeshl.ini")));
-    }
-
-    [Theory]
-    [InlineData(false, 19045, "x64")]
-    [InlineData(true, 19045, "x64")]
-    public async Task Core_and_custom_component_deletion_force_boot_edit_without_hardware_bypass(bool custom, int build, string architecture)
-    {
-        using var fixture = new BuildFixture(build, architecture);
         var recipe = fixture.Recipe with
         {
             SelectedOptions = [], KeepWorkingFiles = true,
@@ -91,40 +47,84 @@ public sealed class SetupInstallerTests
             ExpertAcknowledged = custom,
             ExpertActions = custom ? [new(ImageItemKind.ComponentPayload, "amd64_critical-component", ExpertActionMode.Remove)] : []
         };
-        var observed = false;
+        var sawWinpeshl = false;
         fixture.Runner.OnCommand = args =>
         {
             if (!args.Contains("/Unmount-Image") || !args.Contains("/Commit")) return;
             var mount = args.Single(arg => arg.StartsWith("/MountDir:"))["/MountDir:".Length..];
-            var ini = Path.Combine(mount, @"Windows\System32\winpeshl.ini");
-            if (!File.Exists(ini)) return;
-            observed = true;
-            Assert.Contains("%SYSTEMDRIVE%\\sources\\setup.exe", File.ReadAllText(ini));
+            sawWinpeshl |= File.Exists(Path.Combine(mount, @"Windows\System32\winpeshl.ini"));
         };
         var result = await fixture.Engine.BuildAsync(recipe, null, CancellationToken.None);
-        Assert.True(observed);
+        Assert.False(sawWinpeshl);
+        Assert.Single(fixture.Runner.Calls, args => args.Contains("/Mount-Image"));
+        Assert.Equal(await File.ReadAllBytesAsync(Path.Combine(fixture.Source, @"sources\boot.wim")),
+            await File.ReadAllBytesAsync(Path.Combine(result.WorkDirectory, @"media\sources\boot.wim")));
         using var report = JsonDocument.Parse(File.ReadAllText(result.ReportPath));
-        Assert.True(report.RootElement.GetProperty("LegacyInstallerEnabled").GetBoolean());
+        Assert.False(report.RootElement.TryGetProperty("LegacyInstallerEnabled", out _));
     }
 
+    // AC-S2: The boot-image stage is exactly what the Proxmox profile runs (the seam only forces it for a unit-test recipe).
     [Fact]
-    public async Task Resuming_a_compressed_Core_job_from_before_the_setting_re_edits_Setup_without_recompressing()
+    public async Task Every_boot_image_index_gets_vioscsi_and_is_committed_on_a_private_copy_before_the_atomic_replace()
     {
         using var fixture = new BuildFixture();
-        var recipe = fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = [] };
-        var failed = await JobScenarios.FailAtIsoAsync(fixture, recipe);
-        var checkpoint = CheckpointStore.Read(failed.WorkDirectory);
-        CheckpointStore.WriteAtomic(failed.WorkDirectory, checkpoint with
+        var recipe = fixture.UseSetupImageEdit(fixture.Recipe with { KeepWorkingFiles = true });
+        var original = await File.ReadAllBytesAsync(Path.Combine(fixture.Source, @"sources\boot.wim"));
+        var stagedDuringEdits = new List<bool>();
+        fixture.Runner.OnCommand = args =>
         {
-            SetupState = SetupProgress.NotRequired,
-            Report = checkpoint.Report with { LegacyInstallerEnabled = false }
-        });
+            if (!args.Contains("/Unmount-Image") || !args.Contains("/Commit")) return;
+            var job = Path.GetDirectoryName(args.Single(arg => arg.StartsWith("/MountDir:"))["/MountDir:".Length..])!;
+            var bootWim = Path.Combine(job, @"media\sources\boot.wim");
+            if (File.Exists(bootWim)) stagedDuringEdits.Add(File.ReadAllBytes(bootWim).AsSpan().SequenceEqual(original));
+        };
+        var result = await fixture.Engine.BuildAsync(recipe, null, CancellationToken.None);
+        var calls = fixture.Runner.Calls;
+        var privateBoot = Path.Combine(result.WorkDirectory, "setup", "boot.wim");
+        var bootMounts = calls.Where(args => args.Contains("/Mount-Image") && args.Contains("/ImageFile:" + privateBoot)).ToArray();
+        Assert.Equal(2, bootMounts.Length);
+        Assert.Contains(bootMounts, args => args.Contains("/Index:1"));
+        Assert.Contains(bootMounts, args => args.Contains("/Index:2"));
+        var drivers = calls.Where(args => args.Contains("/Add-Driver")).ToArray();
+        Assert.Equal(2, drivers.Length);
+        Assert.All(drivers, args => Assert.Contains(args, arg => arg.EndsWith("vioscsi.inf", StringComparison.Ordinal)));
+        // Each index: Mount-Image, then Add-Driver, then Unmount /Commit, in that order.
+        var sequence = calls.Select((args, i) => (args, i)).Where(x => x.args.Contains("/Add-Driver")).Select(x => x.i).ToArray();
+        foreach (var at in sequence)
+        {
+            Assert.Contains("/Mount-Image", calls[at - 1]);
+            Assert.Contains("/Unmount-Image", calls[at + 1]);
+            Assert.Contains("/Commit", calls[at + 1]);
+        }
+        // While the private copy was being edited the staged boot.wim in the media was never touched.
+        Assert.NotEmpty(stagedDuringEdits);
+        Assert.All(stagedDuringEdits, same => Assert.True(same));
+        Assert.False(File.Exists(privateBoot));   // moved over the staged one atomically
+    }
+
+    // AC-S2: A failure on the second boot index leaves the staged boot.wim untouched and the whole edit repeats on resume.
+    [Fact]
+    public async Task A_failure_on_the_second_boot_index_leaves_the_staged_boot_wim_unchanged_and_resume_repeats_both_indexes()
+    {
+        using var fixture = new BuildFixture();
+        var recipe = fixture.UseSetupImageEdit(fixture.Recipe with { KeepWorkingFiles = true });
+        var bootMounts = 0;
+        fixture.Runner.OnCommand = args =>
+        {
+            if (!args.Contains("/Mount-Image") || !args.Any(arg => arg.EndsWith(@"setup\boot.wim", StringComparison.Ordinal))) return;
+            if (++bootMounts == 2) throw new IOException("Injected second boot-index failure");
+        };
+        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(recipe, null, CancellationToken.None));
+        Assert.Equal(2, bootMounts);
+        Assert.Equal(await File.ReadAllBytesAsync(Path.Combine(fixture.Source, @"sources\boot.wim")),
+            await File.ReadAllBytesAsync(Path.Combine(failure.WorkDirectory, @"media\sources\boot.wim")));
+        Assert.Equal(SetupProgress.Pending, CheckpointStore.Read(failure.WorkDirectory).SetupState);
+        fixture.Runner.OnCommand = null;
         var before = fixture.Runner.Calls.Count;
-        var result = await fixture.Engine.ResumeAsync(JobScenarios.JobFile(failed), recipe, null, CancellationToken.None);
-        Assert.True(File.Exists(result.IsoPath));
+        await fixture.Engine.ResumeAsync(JobScenarios.JobFile(failure), recipe, null, CancellationToken.None);
         var calls = fixture.Runner.Calls.Skip(before).ToArray();
-        Assert.Single(calls, args => args.Contains("/Mount-Image"));
-        Assert.DoesNotContain(calls, args => args.Contains("/Export-Image"));
+        Assert.Equal(2, calls.Count(args => args.Contains("/Mount-Image")));
+        Assert.Equal(2, calls.Count(args => args.Contains("/Add-Driver") && args.Any(arg => arg.EndsWith("vioscsi.inf", StringComparison.Ordinal))));
     }
 
     // AC-S2: Optional real DISM validation commits and reopens every boot image; it does not build an ISO.
@@ -166,53 +166,6 @@ public sealed class SetupInstallerTests
                 attempted = false;
             }
             Assert.Equal(images.Select(image => image.Index), (await dism.GetImagesAsync(working, CancellationToken.None)).Select(image => image.Index));
-        }
-        finally
-        {
-            if (attempted)
-            {
-                var mounted = await dism.RunAsync(CancellationToken.None, "/Get-MountedWimInfo");
-                if (mounted.Contains(mount, StringComparison.OrdinalIgnoreCase))
-                    await dism.RunAsync(CancellationToken.None, "/Unmount-Image", $"/MountDir:{mount}", "/Discard");
-            }
-            fixture.AllowCleanup = true;
-        }
-    }
-
-    [Fact]
-    public async Task Legacy_startup_survives_a_real_Setup_image_commit_when_configured()
-    {
-        var iso = Environment.GetEnvironmentVariable("TINY11_SETUP_ISO_CHECK");
-        if (string.IsNullOrEmpty(iso)) return;
-        using var fixture = new BuildFixture();
-        using var media = new MediaSourceFactory().Open(iso);
-        var mount = NativeTests.CreateOwnedMount(fixture.Root, fakeWindows: false);
-        var job = Path.GetDirectoryName(mount)!;
-        var working = Path.Combine(job, "boot.wim");
-        File.Copy(Path.Combine(media.RootPath, @"sources\boot.wim"), working);
-        File.SetAttributes(working, File.GetAttributes(working) & ~FileAttributes.ReadOnly);
-        var dism = new DismClient(ToolLocator.FindDism(), new ProcessRunner(), null,
-            new(job, Path.Combine(job, "dism.log"), false));
-        var indexes = await dism.GetImagesAsync(working, CancellationToken.None);
-        var setup = indexes.First(image => image.Name.Contains("Setup", StringComparison.OrdinalIgnoreCase));
-        var attempted = false;
-        fixture.AllowCleanup = false;
-        try
-        {
-            attempted = true;
-            await dism.RunAsync(CancellationToken.None, "/Mount-Image", $"/ImageFile:{working}",
-                $"/Index:{setup.Index}", $"/MountDir:{mount}", "/CheckIntegrity");
-            SetupInstaller.ApplyLegacy(mount, _ => { });
-            var expected = File.ReadAllText(Path.Combine(mount, @"Windows\System32\winpeshl.ini"));
-            Assert.Contains("%SYSTEMDRIVE%\\sources\\setup.exe", expected);
-            Assert.True(File.Exists(Path.Combine(mount, @"Windows\System32\wpeinit.exe")));
-            await dism.RunAsync(CancellationToken.None, "/Unmount-Image", $"/MountDir:{mount}", "/Commit", "/CheckIntegrity");
-            attempted = false;
-            attempted = true;
-            await dism.RunAsync(CancellationToken.None, "/Mount-Image", $"/ImageFile:{working}",
-                $"/Index:{setup.Index}", $"/MountDir:{mount}", "/ReadOnly", "/CheckIntegrity");
-            Assert.Equal(expected, File.ReadAllText(Path.Combine(mount, @"Windows\System32\winpeshl.ini")));
-            Assert.Equal(indexes.Count, (await dism.GetImagesAsync(working, CancellationToken.None)).Count);
         }
         finally
         {

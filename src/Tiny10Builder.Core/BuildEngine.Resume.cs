@@ -114,8 +114,7 @@ public sealed partial class BuildEngine
         tracking.Restore(checkpoint.Operations);
         tracking.BeginStage(BuildProgressText.ResumeCheckStage, "Verifying the saved image, setup files and settings before continuing.");
         var committed = checkpoint.Phase == ResumePhase.Committed;
-        if (!committed && (checkpoint.SetupState is SetupProgress.Pending or SetupProgress.Replacing) &&
-            !SetupInstaller.RequiresLegacy(requested))
+        if (!committed && (checkpoint.SetupState is SetupProgress.Pending or SetupProgress.Replacing))
             throw new InvalidDataException("The saved progress is inconsistent: the image is compressed but Setup was never finished.");
 
         // ---- settings: the recipe identity, frozen fields, paths and tools (cheap checks first) ----
@@ -143,9 +142,7 @@ public sealed partial class BuildEngine
                 $"it cannot be resumed with {requested.Compression}.");
         if (!Path.GetDirectoryName(directory)!.Equals(PathSafety.Full(original.WorkspacePath), StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("This job is not inside the workspace named by its recipe.");
-        if (SetupInstaller.RequiresBootEdit(original) != (checkpoint.SetupState != SetupProgress.NotRequired) &&
-            !(SetupInstaller.RequiresLegacy(original) &&
-                checkpoint.SetupState == SetupProgress.NotRequired && !checkpoint.Report.LegacyInstallerEnabled))
+        if (BootEditRequired(original) != (checkpoint.SetupState != SetupProgress.NotRequired))
             throw new InvalidDataException("The saved Setup-image state does not match the job's recipe, so the saved work cannot be trusted.");
         if (string.IsNullOrEmpty(requested.OscdimgPath))
             throw new InvalidDataException("Windows ADK oscdimg.exe is required to create a bootable ISO.");
@@ -230,8 +227,7 @@ public sealed partial class BuildEngine
         var setupAlreadyApplied = checkpoint.SetupState == SetupProgress.Replacing &&
             matchedAlternate.Contains(@"sources\boot.wim", StringComparer.OrdinalIgnoreCase);
         var setupPending = checkpoint.SetupState == SetupProgress.Pending ||
-            (checkpoint.SetupState == SetupProgress.Replacing && !setupAlreadyApplied) ||
-            (SetupInstaller.RequiresLegacy(original) && !checkpoint.Report.LegacyInstallerEnabled);
+            (checkpoint.SetupState == SetupProgress.Replacing && !setupAlreadyApplied);
         return new(checkpoint, setupPending, setupAlreadyApplied, staleSetupMount, staleHiveJournals);
     }
 

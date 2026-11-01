@@ -24,6 +24,8 @@ public sealed partial class BuildEngine
         this.host = host;
         this.options = options ?? new();
     }
+    private bool BootEditRequired(BuildRecipe recipe) => options.ForceBootEdit || SetupInstaller.RequiresBootEdit(recipe);
+
     public async Task<IReadOnlyList<WindowsImage>> InspectAsync(string source, string dismPath, CancellationToken token)
     {
         PathSafety.RejectReparsePoints(source);
@@ -134,8 +136,6 @@ public sealed partial class BuildEngine
         var image = await metadataDism.GetImageAsync(sourceWim, recipe.ImageIndex, token).ConfigureAwait(false);
         host.ValidateImage(recipe, image);
         ImageDefaults.RequireProfessional(image);
-        if (recipe.TemplateProfile != TemplateProfile.None && (image.Architecture != "x64" || !image.IsSupported))
-            throw new InvalidDataException("The Proxmox template profile requires a supported Windows 10 x64 client image.");
         var efiRelative = new[] { @"efi\microsoft\boot\efisys.bin", @"efi\microsoft\boot\efisys_noprompt.bin" }
             .FirstOrDefault(p => File.Exists(Path.Combine(media.RootPath, p))) ??
             throw new InvalidDataException("The source does not contain a supported UEFI boot image.");
@@ -159,7 +159,7 @@ public sealed partial class BuildEngine
             Recipe = recipe, Job = job, Tracking = tracking, CancellationProgress = progress, Dism = dism, Execution = execution, Image = image,
             EfiRelative = efiRelative, Staging = staging, Mount = mount, WorkingWim = workingWim, TemporaryIso = temporaryIso,
             ReportPath = reportPath, Scratch = scratch, Elapsed = elapsed, UsedOptimizedMount = execution.OptimizedMount,
-            SetupPending = SetupInstaller.RequiresBootEdit(recipe)
+            SetupPending = BootEditRequired(recipe)
         };
         void Log(string text) => session.Log(text);
         void Stage(string next, string description) => session.Stage(next, description, token);
@@ -193,7 +193,7 @@ public sealed partial class BuildEngine
                 "Component cleanup" => recipe.SelectedOptions.Contains("cleanup") || recipe.Flavor == BuildFlavor.Core,
                 "Core pruning" => recipe.Flavor == BuildFlavor.Core,
                 "Redundant data" => recipe.RemoveRedundantData,
-                "Setup image" => SetupInstaller.RequiresBootEdit(recipe),
+                "Setup image" => BootEditRequired(recipe),
                 _ => true
             })) tracking.Plan("stage:" + name, name, title);
             Log($"Target: {image.Summary}. Source media is never modified.");

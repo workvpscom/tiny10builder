@@ -127,8 +127,8 @@ public sealed class FailureOrderingTests
             else if (committed && args.Contains("/Mount-Image")) fixture.Runner.FailCommit = true;
         };
         fixture.Runner.FailDiscard = true;
-        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(
-            fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = [] }, null, CancellationToken.None));
+        var recipe = fixture.UseSetupImageEdit(fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = [] });
+        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(recipe, null, CancellationToken.None));
         Assert.True(failure.RecoveryRequired);
         Assert.Contains("Resume tries to discard it again", failure.Message);
         Assert.DoesNotContain("choose Recover workspace", failure.Message, StringComparison.OrdinalIgnoreCase);

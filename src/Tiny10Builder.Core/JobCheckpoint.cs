@@ -48,7 +48,6 @@ internal sealed record SourceIdentity
 /// <summary>Everything the final report needs that only the first part of the build knows.</summary>
 internal sealed record CheckpointReport
 {
-    public bool LegacyInstallerEnabled { get; init; }
     public IReadOnlyList<TemplateArtifactReceipt> TemplateArtifacts { get; init; } = [];
     public string? TemplateManifestSha256 { get; init; }
     public required bool UsedOptimizedMount { get; init; }

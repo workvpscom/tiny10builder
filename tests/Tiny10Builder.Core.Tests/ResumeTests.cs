@@ -72,7 +72,7 @@ internal static class JobScenarios
 [SupportedOSPlatform("windows")]
 public sealed class ResumeTests
 {
-    private static BuildRecipe CoreSetup(BuildFixture fixture) => fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["cortana"] };
+    private static BuildRecipe CoreSetup(BuildFixture fixture) => fixture.UseSetupImageEdit(fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["cortana"] });
 
     // ---- the checkpoint itself --------------------------------------------------------------------------------------
 
@@ -204,11 +204,11 @@ public sealed class ResumeTests
         Assert.True(File.Exists(fixture.Recipe.OutputPath));
         Assert.Equal(64, result.Sha256.Length);
         Assert.Empty(result.Warnings);
-        // the only mount is the private copy of the Setup image; nothing of the installation image is touched
+        // the only mounts are the two indexes of the private copy of boot.wim; nothing of the installation image is touched
         var mounts = calls.Where(call => call.Contains("/Mount-Image")).ToArray();
-        var mount = Assert.Single(mounts);
-        Assert.Contains(mount, arg => arg.StartsWith("/ImageFile:", StringComparison.Ordinal) &&
-            arg.EndsWith(@"setup\boot.wim", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, mounts.Length);
+        Assert.All(mounts, mount => Assert.Contains(mount, arg => arg.StartsWith("/ImageFile:", StringComparison.Ordinal) &&
+            arg.EndsWith(@"setup\boot.wim", StringComparison.OrdinalIgnoreCase)));
         Assert.DoesNotContain(calls, call => call.Any(arg => arg is "/Remove-ProvisionedAppxPackage" or "/Remove-Capability" or
             "/Disable-Feature" or "/Get-ProvisionedAppxPackages" or "/Get-Features" or "/Get-Capabilities" or "/Cleanup-Image"));
         Assert.DoesNotContain(calls, call => call.Contains("/Export-Image") && call.Contains("/SourceIndex:3"));
@@ -279,7 +279,7 @@ public sealed class ResumeTests
     }
 
     [Fact]
-    public async Task Resuming_a_job_without_hardware_bypass_never_mounts_anything()
+    public async Task Resuming_a_job_that_needs_no_boot_edit_never_mounts_anything()
     {
         using var fixture = new BuildFixture();
         var failure = await JobScenarios.InterruptAtCommitAsync(fixture);
@@ -313,12 +313,15 @@ public sealed class ResumeTests
     {
         using var fixture = new BuildFixture();
         using var cancel = new CancellationTokenSource();
+        var bootCommits = 0;
         fixture.Runner.OnCommand = args =>
         {
-            if (args.Contains("/Unmount-Image") && args.Contains("/Commit") && !args.Contains("/CheckIntegrity")) cancel.Cancel();
+            // Cancel on the LAST boot.wim index commit (index 2): the finished edit must be kept and recorded.
+            if (args.Contains("/Unmount-Image") && args.Contains("/Commit") && !args.Contains("/CheckIntegrity") && ++bootCommits == 2) cancel.Cancel();
         };
+        var core = CoreSetup(fixture);
         var failure = await Assert.ThrowsAsync<BuildFailureException>(() =>
-            fixture.Engine.BuildAsync(CoreSetup(fixture), null, cancel.Token));
+            fixture.Engine.BuildAsync(core, null, cancel.Token));
         fixture.Runner.OnCommand = null;
         Assert.True(failure.IsCancellation);
         Assert.Equal("Completed", JobScenarios.StageStates(failure.WorkDirectory)["Setup image"]);
@@ -477,7 +480,8 @@ public sealed class ResumeTests
             if (args.Contains("/Unmount-Image") && args.Contains("/Commit") && args.Contains("/CheckIntegrity")) fixture.Runner.FailCommit = true;
         };
         var original = File.ReadAllBytes(Path.Combine(fixture.Source, @"sources\boot.wim"));
-        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(CoreSetup(fixture), null, CancellationToken.None));
+        var core = CoreSetup(fixture);
+        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(core, null, CancellationToken.None));
         Assert.Equal(original, File.ReadAllBytes(Path.Combine(failure.WorkDirectory, @"media\sources\boot.wim")));
         Assert.Contains(fixture.Runner.Calls, call => call.Contains("/Unmount-Image") && call.Contains("/Discard"));
         Assert.Equal(SetupProgress.Pending, CheckpointStore.Read(failure.WorkDirectory).SetupState);
@@ -496,10 +500,12 @@ public sealed class ResumeTests
             var image = args.FirstOrDefault(arg => arg.StartsWith("/ImageFile:", StringComparison.Ordinal));
             if (!args.Contains("/Mount-Image") || image is null || !image.EndsWith(@"setup\boot.wim", StringComparison.Ordinal)) return;
             var job = Path.GetDirectoryName(Path.GetDirectoryName(image["/ImageFile:".Length..]))!;
+            if (Directory.Exists(Path.Combine(job, JobCheckpoint.FileName))) return;   // already squatted (second boot index)
             File.Delete(Path.Combine(job, JobCheckpoint.FileName));
             Directory.CreateDirectory(Path.Combine(job, JobCheckpoint.FileName));   // a directory now squats on the checkpoint's name
         };
-        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(CoreSetup(fixture), null, CancellationToken.None));
+        var core = CoreSetup(fixture);
+        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(core, null, CancellationToken.None));
         Assert.Contains("could not record the Setup image replacement", failure.Message);
         Assert.Equal(original, File.ReadAllBytes(Path.Combine(failure.WorkDirectory, @"media\sources\boot.wim")));
     }
@@ -518,14 +524,13 @@ public sealed class ResumeTests
         var editedSha = Convert.ToHexString(SHA256.HashData(edited));
         CheckpointStore.WriteAtomic(directory, checkpoint with
         {
-            SetupState = SetupProgress.Replacing, EditedBootSha256 = editedSha,
-            Report = checkpoint.Report with { LegacyInstallerEnabled = true }
+            SetupState = SetupProgress.Replacing, EditedBootSha256 = editedSha
         });
         if (replaceAlreadyDone) File.WriteAllBytes(staged, edited);
         var before = fixture.Runner.Calls.Count;
         await fixture.Engine.ResumeAsync(JobScenarios.JobFile(failure), JobScenarios.OriginalRecipe(directory), null, CancellationToken.None);
         var mounts = fixture.Runner.Calls.Skip(before).Count(call => call.Contains("/Mount-Image"));
-        Assert.Equal(replaceAlreadyDone ? 0 : 1, mounts); // already replaced: never edited twice; not replaced yet: edited once
+        Assert.Equal(replaceAlreadyDone ? 0 : 2, mounts); // already replaced: never edited twice; not replaced yet: both boot indexes edited once
     }
 
     // ---- a stale private Setup mount is cleaned; any other mount is refused ------------------------------------------

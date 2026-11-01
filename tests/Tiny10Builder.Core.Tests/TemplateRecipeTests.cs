@@ -88,9 +88,9 @@ public sealed class TemplateRecipeTests
         else Assert.Throws<InvalidDataException>(() => recipe.ValidateOptions());
     }
 
-    // TM-02 / TM-T03: Reject unsupported metadata architecture before export/job creation.
+    // TM-02 / TM-T03: Image validation (Windows 10 x64 only) rejects arm64 metadata before export/job creation, profile or not.
     [Fact]
-    public async Task Template_profile_rejects_arm64_before_creating_a_job()
+    public async Task Arm64_media_is_rejected_by_image_validation_before_creating_a_job_even_with_the_template_profile()
     {
         using var fixture = new BuildFixture(architecture: "arm64");
         var recipe = fixture.Recipe with
