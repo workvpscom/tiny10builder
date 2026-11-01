@@ -4,9 +4,9 @@
 #   buildhost.sh run '<pwsh>'    run a PowerShell snippet on 9200 via QGA (cwd C:\work\tiny10), print output, exit with its code
 # Uses only VMID 9200. Transfer is a throwaway ISO swapped into 9200's ide2 CD drive.
 # WARNING: `push` ejects/replaces the VM's ide2 CD drive. Never run it while a build or an ISO copy is using ide2.
-# The default NODE (root@<your-proxmox-node>) is maintainer-specific; override it with the NODE environment variable.
+# NODE (the Proxmox node, e.g. NODE=root@pve.example) must be set in the environment; there is no default.
 set -euo pipefail
-NODE=${NODE:-root@<your-proxmox-node>}
+NODE=${NODE:?set NODE to the Proxmox node, e.g. NODE=root@pve.example}
 VMID=9200
 TIMEOUT=${TIMEOUT:-900}
 ROOT=$(git rev-parse --show-toplevel)
