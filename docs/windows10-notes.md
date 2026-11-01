@@ -32,3 +32,8 @@ Spike VM 9201 (Q35, OVMF, no TPM, `scsi0` 20G on virtio-scsi-single, e1000), boo
 - `oobeSystem` `Reseal Mode=Audit` entered Audit mode as built-in Administrator; the `auditUser` `RunSynchronousCommand` ran and wrote `C:\spike-marker.txt` (`audit-ok`) before shutting down.
 - Offline inspection (`losetup --read-only`, `ntfs3 ro,noexec`): `State.ini` shows `ImageState=IMAGE_STATE_SPECIALIZE_RESEAL_TO_AUDIT`.
 - Conclusion: no `winpeshl.ini` override and no `setup_old.exe` are needed on Win10. `vioscsi` still has to be injected into `boot.wim` for the product (Task 6); the spike used external DriverPaths only.
+
+## Build host tooling
+
+- .NET SDK **8.0.400** installed on 9200 from `https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.400/dotnet-sdk-8.0.400-win-x64.exe` (220,878,904 bytes, Authenticode valid, `CN=.NET, O=Microsoft Corporation`), SHA-256 `700A27F3DB3F698FDB11D134D1226F03D11EB6DCBCC2B6C043393172F723E7DE`.
+- `scripts/dev/buildhost.sh push|run` copies the working tree to `C:\work\tiny10` on 9200 (throwaway ISO in the `ide2` CD drive) and runs PowerShell there through QGA.
