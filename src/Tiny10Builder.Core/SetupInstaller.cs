@@ -9,7 +9,7 @@ public static class SetupInstaller
 
     internal static bool RequiresBootEdit(BuildRecipe recipe) =>
         recipe.TemplateProfile == TemplateProfile.ProxmoxCloudbaseInit ||
-        recipe.SelectedOptions.Contains("hardware-bypass") || RequiresLegacy(recipe);
+        RequiresLegacy(recipe);
 
     internal static void ApplyLegacy(string mount, Action<string> log)
     {

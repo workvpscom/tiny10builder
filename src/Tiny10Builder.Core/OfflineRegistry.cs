@@ -11,7 +11,6 @@ namespace Tiny10Builder.Core;
 public interface IOfflineRegistry
 {
     void Apply(string mountDirectory, BuildRecipe recipe, Action<string> log);
-    void ApplySetupBypass(string mountDirectory, Action<string> log);
 }
 
 [SupportedOSPlatform("windows")]
@@ -56,16 +55,6 @@ public sealed class OfflineRegistry : IOfflineRegistry
             Set(software, @"Policies\Microsoft\Windows Defender", "DisableAntiSpyware", 1, log);
             Set(software, @"Policies\Microsoft\Windows Defender\Real-Time Protection", "DisableRealtimeMonitoring", 1, log);
         }
-    }
-
-    public void ApplySetupBypass(string mountDirectory, Action<string> log)
-    {
-        ImageOperations.RequireOwnedMount(mountDirectory);
-        using var privileges = new ImageOperations.PrivilegeScope("SeBackupPrivilege", "SeRestorePrivilege");
-        using var systemHive = Load(Path.Combine(mountDirectory, @"Windows\System32\config\SYSTEM"));
-        var system = systemHive.Root;
-        foreach (var value in PolicyCatalog.ForOption("hardware-bypass").Where(v => v.Hive == PolicyHive.System))
-            Set(system, value.Key, value.Name, value.Value, log);
     }
 
     private static void Set(RegistryKey root, string path, string name, object value, Action<string> log)

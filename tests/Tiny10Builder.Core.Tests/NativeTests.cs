@@ -40,7 +40,7 @@ public sealed class NativeTests(Xunit.Abstractions.ITestOutputHelper output)
         }
         new OfflineRegistry().Apply(mount, new BuildRecipe
         {
-            Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["ads", "privacy", "hardware-bypass"],
+            Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["ads", "privacy"],
             PreferLocalAccount = true
         }, output.WriteLine);
         new ImageOperations().ApplyNativeActions(mount,
@@ -399,7 +399,7 @@ public sealed class NativeTests(Xunit.Abstractions.ITestOutputHelper output)
             new OfflineRegistry().Apply(policyMount, new BuildRecipe
             {
                 Flavor = BuildFlavor.Core, CoreAcknowledged = true,
-                SelectedOptions = ["ads", "privacy", "copilot", "widgets", "search", "edge", "oobe", "hardware-bypass"],
+                SelectedOptions = ["ads", "privacy", "widgets", "search", "edge", "oobe"],
                 PreferLocalAccount = true
             }, output.WriteLine);
             new ImageOperations().ApplyNativeActions(policyMount,

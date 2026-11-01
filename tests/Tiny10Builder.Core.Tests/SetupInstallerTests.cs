@@ -105,7 +105,6 @@ public sealed class SetupInstallerTests
         Assert.True(observed);
         using var report = JsonDocument.Parse(File.ReadAllText(result.ReportPath));
         Assert.True(report.RootElement.GetProperty("LegacyInstallerEnabled").GetBoolean());
-        Assert.False(fixture.Registry.SetupCalled);
     }
 
     [Fact]

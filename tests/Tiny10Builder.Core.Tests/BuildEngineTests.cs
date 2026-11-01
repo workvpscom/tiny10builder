@@ -66,11 +66,11 @@ public sealed class BuildEngineTests
     {
         using var fixture = new BuildFixture();
         var messages = new List<BuildProgress>();
-        await fixture.Engine.BuildAsync(fixture.Recipe with { SelectedOptions = ["recall-feature"] },
+        await fixture.Engine.BuildAsync(fixture.Recipe with { SelectedOptions = ["legacy"] },
             new ImmediateProgress<BuildProgress>(messages.Add), CancellationToken.None);
-        Assert.Contains(messages, m => m.Message == "Recall optional feature" && m.State == BuildOperationState.Skipped &&
+        Assert.Contains(messages, m => m.Message == "Legacy Internet Explorer" && m.State == BuildOperationState.Skipped &&
             m.Detail == "Not present in this image");
-        Assert.DoesNotContain(fixture.Runner.Calls, c => c.Contains("/FeatureName:Recall"));
+        Assert.DoesNotContain(fixture.Runner.Calls, c => c.Contains("/FeatureName:Internet-Explorer-Optional-amd64"));
     }
 
     [Fact]
@@ -145,11 +145,10 @@ public sealed class BuildEngineTests
     }
 
     [Fact]
-    public async Task Hardware_bypass_modifies_setup_image_and_()
+    public async Task Core_edits_the_setup_image_without_any_hardware_bypass()
     {
         using var fixture = new BuildFixture();
-        await fixture.Engine.BuildAsync(fixture.Recipe with { SelectedOptions = ["hardware-bypass"] }, null, CancellationToken.None);
-        Assert.True(fixture.Registry.SetupCalled);
+        await fixture.Engine.BuildAsync(fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = [] }, null, CancellationToken.None);
         Assert.Equal(2, fixture.Runner.Calls.Count(c => c.Contains("/Mount-Image")));
     }
 
@@ -253,7 +252,7 @@ internal sealed class BuildFixture : IDisposable
         File.WriteAllBytes(Path.Combine(Source, @"boot\etfsboot.com"), [8]);
         Recipe = new() { SourcePath = Source, ImageIndex = 3, WorkspacePath = Path.Combine(Root, "workspace"),
             OutputPath = Path.Combine(Root, "output.iso"), DismPath = @"C:\mock\dism.exe",
-            OscdimgPath = @"C:\mock\oscdimg.exe", SelectedOptions = ["copilot-app", "cleanup"] };
+            OscdimgPath = @"C:\mock\oscdimg.exe", SelectedOptions = ["cortana", "cleanup"] };
         Runner = new(build, architecture, Events);
         Operations = new(Events);
         Engine = new(Runner, new FakeMediaFactory(), Registry, Operations, new FakeHost());
@@ -361,7 +360,7 @@ internal sealed class FakeRunner(int build, string architecture, List<string> ev
         if (args.Contains("/Export-Image"))
             File.WriteAllBytes(Value("/DestinationImageFile:"), FakeWim.Create(seed: (byte)(0x20 + exports++)));
         if (args.Contains("/Get-ProvisionedAppxPackages")) return Result(
-            "DisplayName : Microsoft.Copilot\nPackageName : Microsoft.Copilot_1.0_x64__8weky\n");
+            "DisplayName : Microsoft.549981C3F5F10\nPackageName : Microsoft.549981C3F5F10_1.0_x64__8weky\n");
         if (args.Contains("/Get-Features") && lazyMount && FailLazyAccess)
             return Task.FromResult(new ProcessResult(4350, "The request is not supported."));
         if (args.Contains("/Get-Features")) return Result("Feature Name : NetFx3\nState : Disabled\n" +
@@ -410,9 +409,7 @@ internal sealed class FakeHost : IBuildHost
 internal sealed class FakeRegistry : IOfflineRegistry
 {
     public BuildRecipe? LastRecipe { get; private set; }
-    public bool SetupCalled { get; private set; }
     public void Apply(string mount, BuildRecipe recipe, Action<string> log) => LastRecipe = recipe;
-    public void ApplySetupBypass(string mount, Action<string> log) => SetupCalled = true;
 }
 internal sealed class FakeOperations(List<string> events) : IImageOperations
 {

@@ -190,8 +190,6 @@ public sealed partial class BuildEngine
                     $"/Driver:{Path.Combine(s.Staging, "tiny11-template", "drivers", "vioscsi.inf")}").ConfigureAwait(false);
             if (image.Index == setup.Index)
             {
-                if (s.Recipe.SelectedOptions.Contains("hardware-bypass"))
-                    registry.ApplySetupBypass(s.Mount, s.Log);
                 if (SetupInstaller.RequiresLegacy(s.Recipe))
                     SetupInstaller.ApplyLegacy(s.Mount, s.Log);
             }

@@ -40,13 +40,6 @@ public static class PolicyCatalog
                 User(@"Software\Microsoft\InputPersonalization", "RestrictImplicitTextCollection", 1);
                 User(@"Software\Microsoft\InputPersonalization\TrainedDataStore", "HarvestContacts", 0);
                 break;
-            case "copilot":
-                Machine(@"Policies\Microsoft\Windows\WindowsCopilot", "TurnOffWindowsCopilot", 1);
-                User(@"Software\Policies\Microsoft\Windows\WindowsCopilot", "TurnOffWindowsCopilot", 1);
-                Machine(@"Policies\Microsoft\Windows\WindowsAI", "DisableAIDataAnalysis", 1);
-                User(@"Software\Policies\Microsoft\Windows\WindowsAI", "DisableAIDataAnalysis", 1);
-                User(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "ShowCopilotButton", 0);
-                break;
             case "widgets":
                 Machine(@"Policies\Microsoft\Dsh", "AllowNewsAndInterests", 0);
                 break;
@@ -68,15 +61,6 @@ public static class PolicyCatalog
                 Machine(@"Policies\Microsoft\Windows\OOBE", "DisablePrivacyExperience", 1);
                 User(@"Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement", "ScoobeSystemSettingEnabled", 0);
                 User(content, "SubscribedContent-310093Enabled", 0);
-                User(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "TaskbarMn", 0);
-                Machine(@"Policies\Microsoft\Windows\Windows Chat", "ChatIcon", 3);
-                break;
-            case "hardware-bypass":
-                foreach (var name in new[] { "BypassCPUCheck", "BypassRAMCheck", "BypassSecureBootCheck", "BypassStorageCheck", "BypassTPMCheck" })
-                    values.Add(new(PolicyHive.System, @"Setup\LabConfig", name, 1));
-                values.Add(new(PolicyHive.System, @"Setup\MoSetup", "AllowUpgradesWithUnsupportedTPMOrCPU", 1));
-                User(@"Control Panel\UnsupportedHardwareNotificationCache", "SV1", 0);
-                User(@"Control Panel\UnsupportedHardwareNotificationCache", "SV2", 0);
                 break;
             case "reserved-storage":
                 Machine(@"Microsoft\Windows\CurrentVersion\ReserveManager", "ShippedWithReserves", 0);

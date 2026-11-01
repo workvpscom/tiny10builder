@@ -94,10 +94,10 @@ public sealed class CompatibilityTests
     [Fact]
     public void App_matching_is_exact_and_does_not_remove_shared_frameworks()
     {
-        var option = CleanupCatalog.Options.Single(o => o.Id == "copilot-app");
-        Assert.True(CleanupCatalog.MatchesApp(option, new("Microsoft.Copilot", "Microsoft.Copilot_1.0_arm64__8weky")));
-        Assert.False(CleanupCatalog.MatchesApp(option, new("Microsoft.Copilot.Framework", "Microsoft.Copilot.Framework_1.0_arm64__8weky")));
-        Assert.False(CleanupCatalog.MatchesApp(option, new("Microsoft.Copilot", "NotMicrosoft.Copilot_1.0_arm64__8weky")));
+        var option = CleanupCatalog.Options.Single(o => o.Id == "cortana");
+        Assert.True(CleanupCatalog.MatchesApp(option, new("Microsoft.549981C3F5F10", "Microsoft.549981C3F5F10_1.1911.21713.0_neutral_~_8wekyb3d8bbwe")));
+        Assert.False(CleanupCatalog.MatchesApp(option, new("Microsoft.549981C3F5F10.Framework", "Microsoft.549981C3F5F10.Framework_1.0_x64__8weky")));
+        Assert.False(CleanupCatalog.MatchesApp(option, new("Microsoft.549981C3F5F10", "NotMicrosoft.549981C3F5F10_1.0_x64__8weky")));
     }
 
     [Theory]
@@ -123,7 +123,7 @@ public sealed class CompatibilityTests
         Assert.Equal(CleanupCatalog.ForPreset(CleanupPreset.Original), CleanupCatalog.ForMode(BuildMode.Tiny11));
         var core = CleanupCatalog.Options.Where(o => o.Minimal || o.Id is
             "language-extras" or "edge-files" or "onedrive-files" or
-            "hardware-bypass" or "reserved-storage" or "device-encryption").Select(o => o.Id).ToArray();
+            "reserved-storage" or "device-encryption").Select(o => o.Id).ToArray();
         Assert.Equal(core, CleanupCatalog.ForMode(BuildMode.Tiny11Core));
         Assert.Empty(CleanupCatalog.ForMode(BuildMode.Custom));
         Assert.Throws<ArgumentOutOfRangeException>(() => CleanupCatalog.ForMode((BuildMode)99));

@@ -144,7 +144,7 @@ public sealed partial class BuildEngine
         if (!Path.GetDirectoryName(directory)!.Equals(PathSafety.Full(original.WorkspacePath), StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("This job is not inside the workspace named by its recipe.");
         if (SetupInstaller.RequiresBootEdit(original) != (checkpoint.SetupState != SetupProgress.NotRequired) &&
-            !(SetupInstaller.RequiresLegacy(original) && !original.SelectedOptions.Contains("hardware-bypass") &&
+            !(SetupInstaller.RequiresLegacy(original) &&
                 checkpoint.SetupState == SetupProgress.NotRequired && !checkpoint.Report.LegacyInstallerEnabled))
             throw new InvalidDataException("The saved Setup-image state does not match the job's recipe, so the saved work cannot be trusted.");
         if (string.IsNullOrEmpty(requested.OscdimgPath))

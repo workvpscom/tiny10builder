@@ -128,7 +128,7 @@ public sealed class FailureOrderingTests
         };
         fixture.Runner.FailDiscard = true;
         var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(
-            fixture.Recipe with { SelectedOptions = ["hardware-bypass"] }, null, CancellationToken.None));
+            fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = [] }, null, CancellationToken.None));
         Assert.True(failure.RecoveryRequired);
         Assert.Contains("Resume tries to discard it again", failure.Message);
         Assert.DoesNotContain("choose Recover workspace", failure.Message, StringComparison.OrdinalIgnoreCase);

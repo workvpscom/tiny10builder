@@ -10,7 +10,7 @@ namespace Tiny10Builder.Core.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class ResumeRefusalTests
 {
-    private static BuildRecipe Bypass(BuildFixture fixture) => fixture.Recipe with { SelectedOptions = ["hardware-bypass", "copilot-app"] };
+    private static BuildRecipe CoreSetup(BuildFixture fixture) => fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["cortana"] };
 
     private static async Task<InvalidDataException> AssertRefusedAsync(BuildFixture fixture, BuildFailureException job, string fragment,
         BuildRecipe? recipe = null)
@@ -103,7 +103,7 @@ public sealed class ResumeRefusalTests
     public async Task Staged_media_that_differs_from_the_manifest_in_any_way_is_refused(string kind, string fragment)
     {
         using var fixture = new BuildFixture();
-        var job = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture));
+        var job = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
         var media = Path.Combine(job.WorkDirectory, "media");
         switch (kind)
         {
@@ -118,7 +118,7 @@ public sealed class ResumeRefusalTests
     public async Task A_boot_image_that_matches_neither_the_original_nor_the_recorded_edit_is_refused()
     {
         using var fixture = new BuildFixture();
-        var job = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture));
+        var job = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
         Rewrite(job.WorkDirectory, saved => saved with
         {
             SetupState = SetupProgress.Replacing, EditedBootSha256 = Convert.ToHexString(SHA256.HashData([1, 2, 3]))
@@ -201,7 +201,7 @@ public sealed class ResumeRefusalTests
         var original = JobScenarios.OriginalRecipe(job.WorkDirectory);
         var changed = field switch
         {
-            "SelectedOptions" => original with { SelectedOptions = ["copilot-app"] },
+            "SelectedOptions" => original with { SelectedOptions = ["cortana"] },
             "EnableNetFx3" => original with { EnableNetFx3 = true },
             "PreferLocalAccount" => original with { PreferLocalAccount = true },
             "TurboMode" => original with { TurboMode = true },
@@ -220,7 +220,7 @@ public sealed class ResumeRefusalTests
     public async Task Reordering_the_selected_options_is_not_a_change()
     {
         using var fixture = new BuildFixture();
-        var job = await JobScenarios.InterruptAtCommitAsync(fixture, fixture.Recipe with { SelectedOptions = ["copilot-app", "cleanup"] });
+        var job = await JobScenarios.InterruptAtCommitAsync(fixture, fixture.Recipe with { SelectedOptions = ["cortana", "cleanup"] });
         var original = JobScenarios.OriginalRecipe(job.WorkDirectory);
         var result = await fixture.Engine.ResumeAsync(JobScenarios.JobFile(job),
             original with { SelectedOptions = [.. Enumerable.Reverse(original.SelectedOptions)] }, null, CancellationToken.None);
@@ -314,11 +314,14 @@ public sealed class ResumeRefusalTests
     }
 
     [Fact]
-    public async Task A_Setup_state_that_contradicts_the_recipe_is_refused_so_the_bypass_cannot_be_silently_dropped()
+    public async Task A_Setup_state_that_contradicts_the_recipe_is_refused_so_the_edit_cannot_be_silently_dropped()
     {
         using var fixture = new BuildFixture();
-        var job = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture));
-        Rewrite(job.WorkDirectory, saved => saved with { SetupState = SetupProgress.NotRequired });
+        var job = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
+        Rewrite(job.WorkDirectory, saved => saved with
+        {
+            SetupState = SetupProgress.NotRequired, Report = saved.Report with { LegacyInstallerEnabled = true }
+        });
         await AssertRefusedAsync(fixture, job, "does not match");
     }
 

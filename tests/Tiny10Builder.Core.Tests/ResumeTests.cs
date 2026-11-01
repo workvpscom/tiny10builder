@@ -72,7 +72,7 @@ internal static class JobScenarios
 [SupportedOSPlatform("windows")]
 public sealed class ResumeTests
 {
-    private static BuildRecipe Bypass(BuildFixture fixture) => fixture.Recipe with { SelectedOptions = ["hardware-bypass", "copilot-app"] };
+    private static BuildRecipe CoreSetup(BuildFixture fixture) => fixture.Recipe with { Flavor = BuildFlavor.Core, CoreAcknowledged = true, SelectedOptions = ["cortana"] };
 
     // ---- the checkpoint itself --------------------------------------------------------------------------------------
 
@@ -80,7 +80,7 @@ public sealed class ResumeTests
     public async Task Commit_writes_a_checkpoint_with_exact_hashes_the_staged_media_manifest_efi_path_and_report_inputs()
     {
         using var fixture = new BuildFixture();
-        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture));
+        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
         var directory = failure.WorkDirectory;
         var checkpoint = CheckpointStore.Read(directory);
         Assert.Equal(ResumePhase.Committed, checkpoint.Phase);
@@ -132,7 +132,7 @@ public sealed class ResumeTests
     {
         using var fixture = new BuildFixture();
         var events = new List<BuildProgress>();
-        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture), new ImmediateProgress<BuildProgress>(events.Add));
+        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture), new ImmediateProgress<BuildProgress>(events.Add));
         Assert.True(failure.IsCancellation);
         Assert.False(failure.RecoveryRequired);
         Assert.Contains("cancelled", failure.Message);
@@ -195,7 +195,7 @@ public sealed class ResumeTests
     public async Task Resuming_after_commit_runs_only_the_tail_and_repeats_no_mount_removal_or_source_export()
     {
         using var fixture = new BuildFixture();
-        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture));
+        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
         var before = fixture.Runner.Calls.Count;
         var events = new List<BuildProgress>();
         var result = await fixture.Engine.ResumeAsync(JobScenarios.JobFile(failure), JobScenarios.OriginalRecipe(failure.WorkDirectory),
@@ -318,7 +318,7 @@ public sealed class ResumeTests
             if (args.Contains("/Unmount-Image") && args.Contains("/Commit") && !args.Contains("/CheckIntegrity")) cancel.Cancel();
         };
         var failure = await Assert.ThrowsAsync<BuildFailureException>(() =>
-            fixture.Engine.BuildAsync(Bypass(fixture), null, cancel.Token));
+            fixture.Engine.BuildAsync(CoreSetup(fixture), null, cancel.Token));
         fixture.Runner.OnCommand = null;
         Assert.True(failure.IsCancellation);
         Assert.Equal("Completed", JobScenarios.StageStates(failure.WorkDirectory)["Setup image"]);
@@ -349,7 +349,7 @@ public sealed class ResumeTests
     public async Task A_failed_resume_can_be_resumed_again_and_keeps_the_checkpoint_chain_and_history()
     {
         using var fixture = new BuildFixture();
-        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture));
+        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
         var recipe = JobScenarios.OriginalRecipe(failure.WorkDirectory);
         fixture.Runner.FailIso = true;
         var second = await Assert.ThrowsAsync<BuildFailureException>(() =>
@@ -386,7 +386,7 @@ public sealed class ResumeTests
     public async Task Resuming_after_compression_only_rebuilds_and_publishes_the_iso()
     {
         using var fixture = new BuildFixture();
-        var failure = await JobScenarios.FailAtIsoAsync(fixture, Bypass(fixture));
+        var failure = await JobScenarios.FailAtIsoAsync(fixture, CoreSetup(fixture));
         var checkpoint = CheckpointStore.Read(failure.WorkDirectory);
         Assert.Equal(ResumePhase.Compressed, checkpoint.Phase);
         Assert.Equal(SetupProgress.Applied, checkpoint.SetupState);
@@ -460,12 +460,11 @@ public sealed class ResumeTests
             mountedImage = image["/ImageFile:".Length..];
             stagedBefore = File.ReadAllBytes(Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(mountedImage))!, @"media\sources\boot.wim"));
         };
-        var failure = await JobScenarios.FailAtIsoAsync(fixture, Bypass(fixture));
+        var failure = await JobScenarios.FailAtIsoAsync(fixture, CoreSetup(fixture));
         Assert.NotNull(mountedImage);
         Assert.EndsWith(@"setup\boot.wim", mountedImage);
         Assert.False(Directory.Exists(Path.Combine(failure.WorkDirectory, "setup")));      // temporary copy removed after the replace
         Assert.Equal(stagedBefore, File.ReadAllBytes(Path.Combine(failure.WorkDirectory, @"media\sources\boot.wim"))); // fake commit keeps the bytes
-        Assert.True(fixture.Registry.SetupCalled);
         Assert.Equal(SetupProgress.Applied, CheckpointStore.Read(failure.WorkDirectory).SetupState);
     }
 
@@ -478,7 +477,7 @@ public sealed class ResumeTests
             if (args.Contains("/Unmount-Image") && args.Contains("/Commit") && args.Contains("/CheckIntegrity")) fixture.Runner.FailCommit = true;
         };
         var original = File.ReadAllBytes(Path.Combine(fixture.Source, @"sources\boot.wim"));
-        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(Bypass(fixture), null, CancellationToken.None));
+        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(CoreSetup(fixture), null, CancellationToken.None));
         Assert.Equal(original, File.ReadAllBytes(Path.Combine(failure.WorkDirectory, @"media\sources\boot.wim")));
         Assert.Contains(fixture.Runner.Calls, call => call.Contains("/Unmount-Image") && call.Contains("/Discard"));
         Assert.Equal(SetupProgress.Pending, CheckpointStore.Read(failure.WorkDirectory).SetupState);
@@ -500,7 +499,7 @@ public sealed class ResumeTests
             File.Delete(Path.Combine(job, JobCheckpoint.FileName));
             Directory.CreateDirectory(Path.Combine(job, JobCheckpoint.FileName));   // a directory now squats on the checkpoint's name
         };
-        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(Bypass(fixture), null, CancellationToken.None));
+        var failure = await Assert.ThrowsAsync<BuildFailureException>(() => fixture.Engine.BuildAsync(CoreSetup(fixture), null, CancellationToken.None));
         Assert.Contains("could not record the Setup image replacement", failure.Message);
         Assert.Equal(original, File.ReadAllBytes(Path.Combine(failure.WorkDirectory, @"media\sources\boot.wim")));
     }
@@ -511,13 +510,17 @@ public sealed class ResumeTests
     public async Task A_crash_between_the_atomic_replace_and_the_checkpoint_update_is_resolved_by_hash(bool replaceAlreadyDone)
     {
         using var fixture = new BuildFixture();
-        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture));
+        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
         var directory = failure.WorkDirectory;
         var checkpoint = CheckpointStore.Read(directory);
         var staged = Path.Combine(directory, @"media\sources\boot.wim");
         var edited = FakeWim.Create(images: 2, seed: 99);
         var editedSha = Convert.ToHexString(SHA256.HashData(edited));
-        CheckpointStore.WriteAtomic(directory, checkpoint with { SetupState = SetupProgress.Replacing, EditedBootSha256 = editedSha });
+        CheckpointStore.WriteAtomic(directory, checkpoint with
+        {
+            SetupState = SetupProgress.Replacing, EditedBootSha256 = editedSha,
+            Report = checkpoint.Report with { LegacyInstallerEnabled = true }
+        });
         if (replaceAlreadyDone) File.WriteAllBytes(staged, edited);
         var before = fixture.Runner.Calls.Count;
         await fixture.Engine.ResumeAsync(JobScenarios.JobFile(failure), JobScenarios.OriginalRecipe(directory), null, CancellationToken.None);
@@ -531,7 +534,7 @@ public sealed class ResumeTests
     public async Task A_leftover_private_setup_mount_is_discarded_before_resuming_but_the_committed_image_is_never_touched()
     {
         using var fixture = new BuildFixture();
-        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, Bypass(fixture));
+        var failure = await JobScenarios.InterruptAtCommitAsync(fixture, CoreSetup(fixture));
         var directory = failure.WorkDirectory;
         fixture.Runner.StaleMount = (Path.Combine(directory, "mount"), Path.Combine(directory, @"setup\boot.wim"));
         var before = fixture.Runner.Calls.Count;

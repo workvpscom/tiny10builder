@@ -26,15 +26,15 @@ public sealed class OperationTests
         var raw = new List<string>();
         var tracker = new BuildOperationTracker(new ImmediateProgress<BuildProgress>(events.Add), raw.Add);
         tracker.BeginStage("Remove apps", "Remove apps");
-        tracker.Plan("app:Copilot", "Remove apps", "Remove Microsoft.Copilot");
-        await tracker.RunAsync("app:Copilot", "Remove apps", "Remove Microsoft.Copilot", () =>
+        tracker.Plan("app:Copilot", "Remove apps", "Remove Microsoft.549981C3F5F10");
+        await tracker.RunAsync("app:Copilot", "Remove apps", "Remove Microsoft.549981C3F5F10", () =>
         {
             tracker.Output("[================59.0%===    ]");
             tracker.Output("The operation completed successfully.");
             return Task.CompletedTask;
         });
         Assert.Contains(events, e => e.OperationId == "app:Copilot" && e.State == BuildOperationState.Pending);
-        Assert.Contains(events, e => e.OperationId == "app:Copilot" && e.Percent == 59 && e.Message == "Remove Microsoft.Copilot" && e.Detail is null);
+        Assert.Contains(events, e => e.OperationId == "app:Copilot" && e.Percent == 59 && e.Message == "Remove Microsoft.549981C3F5F10" && e.Detail is null);
         Assert.Contains(events, e => e.OperationId == "app:Copilot" && e.State == BuildOperationState.Completed);
         Assert.DoesNotContain(events, e => BuildProgressText.IsConsoleProgress(e.Message));
         Assert.Contains(raw, line => BuildProgressText.IsConsoleProgress(line));
@@ -64,9 +64,9 @@ public sealed class OperationTests
     {
         using var fixture = new BuildFixture();
         var events = new List<BuildProgress>();
-        await fixture.Engine.BuildAsync(fixture.Recipe with { SelectedOptions = ["copilot-app", "workfolders"] },
+        await fixture.Engine.BuildAsync(fixture.Recipe with { SelectedOptions = ["cortana", "workfolders"] },
             new ImmediateProgress<BuildProgress>(events.Add), CancellationToken.None);
-        Assert.Contains(events, e => e.OperationId == "app:Microsoft.Copilot_1.0_x64__8weky" && e.State == BuildOperationState.Running);
+        Assert.Contains(events, e => e.OperationId == "app:Microsoft.549981C3F5F10_1.0_x64__8weky" && e.State == BuildOperationState.Running);
         Assert.Contains(events, e => e.OperationId == "feature:WorkFolders-Client" && e.State == BuildOperationState.Completed);
         Assert.Contains(fixture.Runner.Calls, c => c.Contains("/Export-Image") && c.Contains("/Compress:max"));
         using var failed = new BuildFixture();
