@@ -120,6 +120,31 @@ public sealed class BuildEngineTests
     }
 
     [Fact]
+    public async Task Build_refuses_a_non_Pro_edition_before_any_workspace_write()
+    {
+        using var fixture = new BuildFixture();
+        fixture.Runner.ImageName = "Windows 10 Home";
+        fixture.Runner.ImageEdition = "Core";
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            fixture.Engine.BuildAsync(fixture.Recipe, null, CancellationToken.None));
+        Assert.Equal("No Windows 10 Pro image in this source.", error.Message);
+        Assert.False(Directory.Exists(fixture.Recipe.WorkspacePath));
+        Assert.DoesNotContain(fixture.Runner.Calls, c => c.Contains("/Export-Image") || c.Contains("/Mount-Image"));
+        var inventory = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            fixture.Engine.InventoryAsync(fixture.Recipe, null, CancellationToken.None));
+        Assert.Equal("No Windows 10 Pro image in this source.", inventory.Message);
+        Assert.False(Directory.Exists(fixture.Recipe.WorkspacePath));
+    }
+
+    [Fact]
+    public async Task Build_accepts_Windows_10_Pro_19045()
+    {
+        using var fixture = new BuildFixture();
+        var result = await fixture.Engine.BuildAsync(fixture.Recipe, null, CancellationToken.None);
+        Assert.True(File.Exists(result.IsoPath));
+    }
+
+    [Fact]
     public async Task Hardware_bypass_modifies_setup_image_and_()
     {
         using var fixture = new BuildFixture();
@@ -246,6 +271,8 @@ internal sealed class BuildFixture : IDisposable
 internal sealed class FakeRunner(int build, string architecture, List<string> events) : IProcessRunner
 {
     public List<IReadOnlyList<string>> Calls { get; } = [];
+    public string ImageName { get; set; } = "Windows 10 Pro";
+    public string ImageEdition { get; set; } = "Professional";
     public bool FailPackages { get; set; }
     public bool FailIso { get; set; }
     public bool FailOptimizedMount { get; set; }
@@ -327,9 +354,9 @@ internal sealed class FakeRunner(int build, string architecture, List<string> ev
             if (!args.Any(a => a.StartsWith("/Index:")))
                 return Result(boot ? "Index : 1\nIndex : 2\n" : file.Contains(@"\source\") ? "Index : 3\n" : "Index : 1\n");
             return Result($"Deployment Image Servicing and Management tool\nVersion: 10.0.99999.1000\n" +
-                $"Name : {(boot ? (args.Contains("/Index:1") ? "Microsoft Windows PE" : "Microsoft Windows Setup") : "Windows 10 Pro")}\nDescription : Image\n" +
+                $"Name : {(boot ? (args.Contains("/Index:1") ? "Microsoft Windows PE" : "Microsoft Windows Setup") : ImageName)}\nDescription : Image\n" +
                 $"Architecture : {architecture}\nVersion : 10.0.{build}\nServicePack Build : 123\n" +
-                $"Edition : Professional\nInstallation : Client\nSize : 16,000,000,000 bytes\n");
+                $"Edition : {ImageEdition}\nInstallation : Client\nSize : 16,000,000,000 bytes\n");
         }
         if (args.Contains("/Export-Image"))
             File.WriteAllBytes(Value("/DestinationImageFile:"), FakeWim.Create(seed: (byte)(0x20 + exports++)));

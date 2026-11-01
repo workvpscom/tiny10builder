@@ -42,6 +42,7 @@ public sealed partial class BuildEngine
         var sourceWim = InstallationMedia.ImageFile(media.RootPath);
         var image = await dism.GetImageAsync(sourceWim, recipe.ImageIndex, token).ConfigureAwait(false);
         host.ValidateImage(recipe with { OutputPath = "" }, image);
+        ImageDefaults.RequireProfessional(image);
         // A read-only inventory never uses lazy mounting: it has no 87/4350 fallback, and a failed probe costs minutes.
         var execution = BuildExecutionPlan.Create(recipe, Environment.ProcessorCount, allowOptimizedMount: false);
         using var job = BuildJob.Create(recipe.WorkspacePath, "inventory", execution.BufferedLog);
@@ -132,6 +133,7 @@ public sealed partial class BuildEngine
         var metadataDism = new DismClient(recipe.DismPath, runner);
         var image = await metadataDism.GetImageAsync(sourceWim, recipe.ImageIndex, token).ConfigureAwait(false);
         host.ValidateImage(recipe, image);
+        ImageDefaults.RequireProfessional(image);
         if (recipe.TemplateProfile != TemplateProfile.None && (image.Architecture != "x64" || !image.IsSupported))
             throw new InvalidDataException("The Proxmox template profile requires a supported Windows 10 x64 client image.");
         var efiRelative = new[] { @"efi\microsoft\boot\efisys.bin", @"efi\microsoft\boot\efisys_noprompt.bin" }
