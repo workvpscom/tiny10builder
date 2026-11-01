@@ -37,7 +37,7 @@ case "${1:-}" in
     ;;
   run)
     shift
-    guest_ps "Set-Location C:\\work\\tiny10; \$env:Path=[Environment]::GetEnvironmentVariable('Path','Machine'); $1; exit \$LASTEXITCODE"
+    guest_ps "New-Item -ItemType Directory -Force C:\\work\\tmp | Out-Null; \$env:TEMP='C:\\work\\tmp'; \$env:TMP='C:\\work\\tmp'; Set-Location C:\\work\\tiny10; \$env:Path=[Environment]::GetEnvironmentVariable('Path','Machine'); $1; exit \$LASTEXITCODE"
     ;;
   *) echo "usage: $0 push | run '<powershell>'" >&2; exit 2;;
 esac
