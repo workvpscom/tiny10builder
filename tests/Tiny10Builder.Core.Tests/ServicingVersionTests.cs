@@ -16,6 +16,7 @@ public sealed class ServicingVersionTests
     [InlineData(26100, 1, 26200)]
     [InlineData(22621, 1, 22631)]
     [InlineData(19041, 1, 19045)]
+    [InlineData(19041, 1, 19041)]
     [InlineData(19045, 1, 19045)]
     [InlineData(26100, 1, 22631)]
     [InlineData(29691, 1, 26300)]

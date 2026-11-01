@@ -9,10 +9,23 @@ namespace Tiny10Builder.Core.Tests;
 [SupportedOSPlatform("windows")]
 public sealed class CompatibilityTests
 {
-    [Fact]
-    public void Accepts_Windows_10_22H2_Pro_x64()
+    [Theory]
+    [InlineData(19041)]
+    [InlineData(19042)]
+    [InlineData(19043)]
+    [InlineData(19044)]
+    [InlineData(19045)]
+    public void Accepts_Windows_10_2004_to_22H2_family_Pro_x64(int build)
     {
-        var image = Image(19045, "x64");
+        var image = Image(build, "x64");
+        Assert.True(image.IsSupported);
+        image.Validate();
+    }
+
+    [Fact]
+    public void Accepts_the_real_22H2_media_value_19041_2965()
+    {
+        var image = Image() with { Version = new Version(10, 0, 19041, 2965) };
         Assert.True(image.IsSupported);
         image.Validate();
     }
@@ -21,17 +34,24 @@ public sealed class CompatibilityTests
     [InlineData(22621, "x64")]
     [InlineData(22631, "x64")]
     [InlineData(26100, "x64")]
-    [InlineData(19044, "x64")]
+    [InlineData(18363, "x64")]
+    [InlineData(17763, "x64")]
+    [InlineData(19046, "x64")]
+    [InlineData(22000, "x64")]
     [InlineData(19045, "arm64")]
     [InlineData(22621, "arm64")]
     [InlineData(19045, "x86")]
-    public void Rejects_everything_but_build_19045_x64(int build, string architecture)
+    public void Rejects_everything_outside_the_19041_to_19045_x64_family(int build, string architecture)
     {
         var image = Image(build, architecture);
         Assert.False(image.IsSupported);
         var error = Assert.Throws<InvalidDataException>(() => image.Validate());
         Assert.Contains("Windows 10", error.Message);
     }
+
+    [Fact]
+    public void Rejects_server_installations_at_19045() =>
+        Assert.Throws<InvalidDataException>(() => (Image(19045) with { Installation = "Server" }).Validate());
 
     [Fact]
     public void Rejects_server_installations() =>

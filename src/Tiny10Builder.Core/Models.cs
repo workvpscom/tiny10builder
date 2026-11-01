@@ -27,14 +27,15 @@ public sealed record WindowsImage(
     Version Version, string Edition, string Installation, long Size)
 {
     public string Summary => $"{Name}  |  {Architecture}  |  build {Version.Build}.{Version.Revision}";
-    public bool IsSupported => Index > 0 && Size > 0 && Version.Major == 10 && Version.Build == 19045 &&
+    // DISM reports build 19041 for the whole 2004/20H2/21H1/21H2/22H2 family (22H2 is an enablement package).
+    public bool IsSupported => Index > 0 && Size > 0 && Version.Major == 10 && Version.Build is >= 19041 and <= 19045 &&
         Installation.Equals("Client", StringComparison.OrdinalIgnoreCase) && Architecture == "x64";
 
     public void Validate()
     {
         if (!IsSupported)
             throw new InvalidDataException(
-                "Choose a Windows 10 client image, version 22H2 (build 19045), in x64 format.");
+                "Choose a Windows 10 client image (2004\u201322H2, build 19041\u201319045) in x64 format.");
     }
 }
 

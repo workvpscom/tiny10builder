@@ -37,3 +37,9 @@ Spike VM 9201 (Q35, OVMF, no TPM, `scsi0` 20G on virtio-scsi-single, e1000), boo
 
 - .NET SDK **8.0.400** installed on 9200 from `https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.400/dotnet-sdk-8.0.400-win-x64.exe` (220,878,904 bytes, Authenticode valid, `CN=.NET, O=Microsoft Corporation`), SHA-256 `700A27F3DB3F698FDB11D134D1226F03D11EB6DCBCC2B6C043393172F723E7DE`.
 - `scripts/dev/buildhost.sh push|run` copies the working tree to `C:\work\tiny10` on 9200 (throwaway ISO in the `ide2` CD drive) and runs PowerShell there through QGA.
+
+## Media build number (Task 3b)
+
+DISM on the real `Win10_22H2_English_x64v1.iso` reports the Pro image (index 6) as `Version : 10.0.19041` with `ServicePack Build : 2965`, so the parsed image version is 10.0.19041.2965. Windows 10 22H2 is an enablement package on the 2004 servicing base, and DISM reports 19041 for the whole 2004/20H2/21H1/21H2/22H2 family. The installed guest only reports runtime build 19045 after the enablement package applies.
+
+Rule: accept `Version.Major == 10`, build 19041 to 19045 inclusive, Client, x64. Reject Windows 11 (22000+), builds below 19041 (18363, 17763), builds above 19045, x86/arm64 and Server. `ToolLocator.ServicingBase` maps 19041-19045 to 19041.

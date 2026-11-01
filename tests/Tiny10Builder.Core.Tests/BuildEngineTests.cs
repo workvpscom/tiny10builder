@@ -10,6 +10,7 @@ namespace Tiny10Builder.Core.Tests;
 public sealed class BuildEngineTests
 {
     [Theory]
+    [InlineData(19041, "x64", Compression.Recovery)]
     [InlineData(19045, "x64", Compression.Recovery)]
     [InlineData(19045, "x64", Compression.Maximum)]
     public async Task Pipeline_exports_selected_edition_uses_actual_build_and_keeps_source(int build, string arch, Compression compression)
