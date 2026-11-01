@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 plugin = pathlib.Path(sys.argv[1])
-spec = importlib.util.spec_from_file_location('tiny11_cloudbase', plugin)
+spec = importlib.util.spec_from_file_location('tiny10_cloudbase', plugin)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 with tempfile.TemporaryDirectory(prefix='tiny11-day2-state-') as temporary:

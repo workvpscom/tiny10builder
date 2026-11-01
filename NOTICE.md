@@ -17,3 +17,6 @@ Their license texts, third-party notices, or NuGet license metadata are included
 under `licenses`.
 Windows installation media and ADK executables are not bundled. Windows
 downloads, use and activation remain subject to Microsoft's terms.
+
+This repository derives from the maintainer's tiny11builder fork at commit
+`88bb9bb`, which is itself based on the upstream project above.

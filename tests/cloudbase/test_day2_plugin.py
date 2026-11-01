@@ -19,8 +19,8 @@ if importlib.util.find_spec('cloudbaseinit') is None:
     base_stub.BasePlugin = TestBasePlugin
     sys.modules[base_stub.__name__] = base_stub
 
-PATH = pathlib.Path(__file__).parents[2] / 'src/Tiny11Builder.Core/Template/tiny11_cloudbase.py'
-spec = importlib.util.spec_from_file_location('tiny11_cloudbase', PATH)
+PATH = pathlib.Path(__file__).parents[2] / 'src/Tiny10Builder.Core/Template/tiny10_cloudbase.py'
+spec = importlib.util.spec_from_file_location('tiny10_cloudbase', PATH)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
