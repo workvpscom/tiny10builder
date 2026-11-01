@@ -13,6 +13,7 @@ new_case create-happy
 STUB_VM_STATE=none run bash "$S" 9200 local:iso/tiny10.iso
 assert_rc 0
 assert_logged '^qm create 9200 '
+assert_logged '^pvesm status --storage local-lvm'
 c=$(grep '^qm create' "$STUB_LOG")
 for want in '--machine pc-q35-9.0' '--bios ovmf' '--ostype win10' '--cpu host' '--cores 2' '--memory 4096' '--balloon 0' \
   '--scsihw virtio-scsi-single' '--scsi0 local-lvm:20' '--efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=1' \
@@ -23,11 +24,26 @@ case "$c" in *tpmstate*) fail "tpmstate present" ;; *) _ok ;; esac
 assert_not_logged '^qm start'
 
 new_case create-bridge-storage
-STUB_VM_STATE=none run bash "$S" 9201 local:iso/x.iso --storage other --bridge vmbr9
+STUB_VM_STATE=none run bash "$S" 9201 local:iso/x.iso --storage local-lvm --bridge vmbr9
 assert_rc 0
-assert_logged '--scsi0 other:20'
-assert_logged '--efidisk0 other:1,efitype=4m,pre-enrolled-keys=1'
+assert_logged '--scsi0 local-lvm:20'
 assert_logged 'bridge=vmbr9'
+
+new_case create-other-storage
+STUB_VM_STATE=none run bash "$S" 9201 local:iso/x.iso --storage other
+assert_rc 2; assert_not_logged '^qm create'; assert_not_logged '^pvesm'
+
+new_case create-low-lvm-free
+STUB_VM_STATE=none STUB_LVM_AVAIL=31457280 run bash "$S" 9200 local:iso/tiny10.iso
+assert_rc 3; assert_not_logged '^qm create'
+
+new_case create-garbled-pvesm
+STUB_VM_STATE=none STUB_PVESM_RAW='' run bash "$S" 9200 local:iso/tiny10.iso
+assert_rc 3; assert_not_logged '^qm create'
+
+new_case create-inactive-storage
+STUB_VM_STATE=none STUB_LVM_STATUS=inactive run bash "$S" 9200 local:iso/tiny10.iso
+assert_rc 3; assert_not_logged '^qm create'
 
 new_case create-existing
 STUB_VM_STATE=stopped run bash "$S" 9200 local:iso/tiny10.iso

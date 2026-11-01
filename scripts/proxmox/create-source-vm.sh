@@ -2,7 +2,8 @@
 # shellcheck source-path=SCRIPTDIR
 # Create the tiny10 source VM (Q35 9.0, OVMF without TPM, virtio-scsi-single, 20G scsi0, e1000, QGA, ISO on ide2).
 # Usage: create-source-vm.sh <vmid> <iso-volid> [--storage local-lvm] [--bridge vmbr1]
-# Refuses VMID < 9200 and an existing VMID. Never starts the VM.
+# Refuses VMID < 9200, an existing VMID, any storage other than local-lvm and less than 40 GiB free on it (exit 3).
+# Never starts the VM.
 set -Eeuo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib.sh
@@ -23,7 +24,9 @@ while [ $# -gt 0 ]; do
 done
 
 require_vmid_min "$VMID"
+[ "$STORAGE" = local-lvm ] || die "only --storage local-lvm is allowed (got '$STORAGE')" 2
 if vm_exists "$VMID"; then die "VM $VMID already exists; refusing to touch it" 2; fi
+require_lvm_free_gb "$STORAGE" 40
 
 qm create "$VMID" \
   --name tiny10-src \

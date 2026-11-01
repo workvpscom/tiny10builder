@@ -93,26 +93,75 @@ assert_rc_nonzero
 assert_logged '^vzdump'
 if ls "$WORK"/backup-*/result.txt >/dev/null 2>&1; then fail "result.txt written despite hash mismatch"; else _ok; fi
 
-new_case backup-boot-not-applied
+new_case backup-boot-not-applied-never-passes
 make_evidence "$WORK"
 STUB_SET_NOOP_BOOT=1 run bash "$S" 9200 "$WORK"
 assert_rc_nonzero; assert_not_logged '^vzdump'
-
-new_case backup-boot-ide2-never-passes
-make_evidence "$WORK"
-STUB_SET_NOOP_BOOT=1 run bash "$S" 9200 "$WORK"
 if ls "$WORK"/backup-*/result.txt >/dev/null 2>&1; then fail "BACKUP_PASS with ide2 boot order"; else _ok; fi
 
-new_case backup-two-archives-or-none
+
+new_case backup-no-archive-produced
 make_evidence "$WORK"
 STUB_NO_ARCHIVE=1 run bash "$S" 9200 "$WORK"
 assert_rc_nonzero
+
+new_case backup-two-archives
+make_evidence "$WORK"
+STUB_TWO_ARCHIVES=1 run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_eq "$(grep -c 'expected exactly one' "$WORK"/backup-*/job.log)" 1
+if ls "$WORK"/backup-*/result.txt >/dev/null 2>&1; then fail "result.txt written"; else _ok; fi
 
 new_case backup-zstd-fail
 make_evidence "$WORK"
 STUB_ZSTD_FAIL=1 run bash "$S" 9200 "$WORK"
 assert_rc_nonzero
 if ls "$WORK"/backup-*/result.txt >/dev/null 2>&1; then fail "result.txt written"; else _ok; fi
+
+new_case backup-evidence-other-vmid
+EV_VMID=9210 make_evidence "$WORK"
+run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
+new_case backup-evidence-no-vmid-file
+make_evidence "$WORK"; rm "$WORK/offline-evidence/vmid.txt"
+run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
+new_case backup-evidence-volume-mismatch
+EV_VOL=local-lvm:vm-9200-disk-2 make_evidence "$WORK"
+run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_out 'differs'; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
+new_case backup-evidence-no-volume-file
+make_evidence "$WORK"; rm "$WORK/offline-evidence/scsi0-volume.txt"
+run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
+new_case backup-vm-without-scsi0
+make_evidence "$WORK"
+sed 's/^scsi0:/sata0:/' "$STUB_DIR/default.conf" >"$T/sata.conf"
+STUB_QM_CONFIG="$T/sata.conf" run bash "$S" 9200 "$WORK"
+assert_rc_nonzero; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
+new_case backup-relative-dumpdir
+make_evidence "$WORK"
+cd "$WORK/.." && run bash "$S" 9200 work
+assert_rc 2; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
+new_case backup-dumpdir-root
+run bash "$S" 9200 /
+assert_rc 2; assert_out 'refusing dumpdir'; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+
+new_case backup-dumpdir-node-dump
+run bash "$S" 9200 /var/lib/vz/dump
+assert_rc 2; assert_out 'refusing dumpdir'; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
+run bash "$S" 9200 /var/lib/vz/dump/
+assert_rc 2; assert_out 'refusing dumpdir'
+
+new_case backup-dumpdir-symlink-to-root
+ln -s / "$T/rootlink"
+run bash "$S" 9200 "$T/rootlink"
+assert_rc 2; assert_out 'refusing dumpdir'; assert_not_logged '^vzdump'; assert_not_logged '^qm set'
 
 new_case backup-dump-preexists
 make_evidence "$WORK"; mkdir "$WORK/dump"

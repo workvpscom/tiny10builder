@@ -16,10 +16,10 @@ new_case() {
   mkdir -p "$STUB_DIR" "$T/work"
   : >"$STUB_LOG"
   export STUB_DIR STUB_LOG
-  unset STUB_VM_STATE STUB_QM_CONFIG STUB_DF_AVAIL STUB_ZSTD_FAIL STUB_MUTATE STUB_NO_ARCHIVE STUB_SFDISK STUB_FIXTURE STUB_SET_NOOP_BOOT
+  unset STUB_VM_STATE STUB_QM_CONFIG STUB_DF_AVAIL STUB_ZSTD_FAIL STUB_MUTATE STUB_NO_ARCHIVE STUB_SFDISK STUB_FIXTURE STUB_SET_NOOP_BOOT STUB_TWO_ARCHIVES STUB_PVESM_RAW STUB_LVM_AVAIL STUB_LVM_STATUS EV_VMID EV_VOL
   make_stubs
   PATH="$STUB_DIR:$ORIG_PATH"
-  WORK="$T/work"
+  WORK=$(cd "$T/work" && pwd -P)
 }
 ORIG_PATH=$PATH
 
@@ -69,7 +69,16 @@ echo "vzdump $*" >>"$STUB_LOG"
 d=''
 while [ $# -gt 0 ]; do if [ "$1" = --dumpdir ]; then d=$2; fi; shift; done
 if [ -z "${STUB_NO_ARCHIVE:-}" ]; then echo archive >"$d/vzdump-qemu-9200-2026_11_01-00_00_00.vma.zst"; fi
+if [ -n "${STUB_TWO_ARCHIVES:-}" ]; then echo archive2 >"$d/vzdump-qemu-9200-2026_11_01-00_00_01.vma.zst"; fi
 if [ -n "${STUB_MUTATE:-}" ]; then echo 2222bbbb >"$STUB_DIR/diskhash"; fi
+exit 0
+EOF2
+  cat >"$STUB_DIR/pvesm" <<'EOF2'
+#!/bin/bash
+echo "pvesm $*" >>"$STUB_LOG"
+if [ -n "${STUB_PVESM_RAW+x}" ]; then printf '%s' "$STUB_PVESM_RAW"; exit 0; fi
+printf 'Name             Type     Status           Total            Used       Available        %%\n'
+printf '%s     lvmthin     %s       354275328        65966066       %s   18.62%%\n' "$3" "${STUB_LVM_STATUS:-active}" "${STUB_LVM_AVAIL:-288309261}"
 exit 0
 EOF2
   cat >"$STUB_DIR/zstd" <<'EOF2'
@@ -156,6 +165,8 @@ make_evidence() {
   local e=$1/offline-evidence
   mkdir -p "$e/guest/Tiny11Template" "$e/guest/Sysprep"
   echo 0 >"$e/inspect.exit"
+  echo "${EV_VMID:-9200}" >"$e/vmid.txt"
+  echo "${EV_VOL:-local-lvm:vm-9200-disk-1}" >"$e/scsi0-volume.txt"
   echo '{"State":"SysprepReturned"}' >"$e/guest/Tiny11Template/finalization-status.json"
   : >"$e/guest/Sysprep/Sysprep_succeeded.tag"
   case "${2:-returned}" in

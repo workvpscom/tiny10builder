@@ -1,10 +1,13 @@
 #!/bin/bash
 # shellcheck source-path=SCRIPTDIR
 # Offline vzdump backup of a stopped, sysprepped tiny10 source VM.
-# Usage: backup.sh <vmid> <dumpdir>       (<dumpdir> must exist, with > 12 GB free)
+# Usage: backup.sh <vmid> <dumpdir>       (<dumpdir>: absolute path of an existing directory with > 12 GB free;
+#                                         "/" and the node-global /var/lib/vz/dump are refused)
 # Exit codes: 2 bad arguments, 3 VM running or too little free space, other non-zero = failed check.
 # Evidence convention (produced by offline-inspect.sh <vmid> <dumpdir>/offline-evidence):
 #   <dumpdir>/offline-evidence/inspect.exit                                 must contain 0
+#   <dumpdir>/offline-evidence/vmid.txt                                     must equal <vmid>
+#   <dumpdir>/offline-evidence/scsi0-volume.txt                             must equal the live scsi0 volume of the VM
 #   <dumpdir>/offline-evidence/guest/Tiny11Template/finalization-status.json + guest/Sysprep/ must satisfy lib.sh
 #   sysprep_evidence_ok: stage SysprepReturned or SysprepStarting, AND Sysprep_succeeded.tag present, AND no
 #   Sysprep_failed.tag (Sysprep /shutdown can power the VM off before the guest writes SysprepReturned).
@@ -23,13 +26,26 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 VMID=$1
 DUMPDIR=$2
 require_vmid_min "$VMID"
+case "$DUMPDIR" in /*) ;; *) die "dumpdir must be an absolute path ($DUMPDIR)" 2 ;; esac
+refuse_dumpdir() { # refuse the filesystem root and the node-global dump directory scanned by the vzdump hook
+  local d=${1%/}
+  case "$d" in '' | /var/lib/vz/dump) die "refusing dumpdir '$1': it is the filesystem root or the node-global dump directory" 2 ;; esac
+}
+refuse_dumpdir "$DUMPDIR"
 [ -d "$DUMPDIR" ] || die "dumpdir $DUMPDIR does not exist" 2
+DUMPDIR=$(cd "$DUMPDIR" && pwd -P)
+refuse_dumpdir "$DUMPDIR"
 require_stopped "$VMID"
 require_free_gb "$DUMPDIR" 12
 
 EV="$DUMPDIR/offline-evidence"
 [ -f "$EV/inspect.exit" ] && [ "$(cat "$EV/inspect.exit")" = 0 ] || die "offline-inspect evidence missing or not clean ($EV/inspect.exit)" 1
 sysprep_evidence_ok "$EV/guest/Tiny11Template/finalization-status.json" "$EV/guest/Sysprep" || die "evidence does not prove Sysprep success" 1
+# Tie the evidence to this VM and to its current system disk before anything is changed.
+[ -f "$EV/vmid.txt" ] && [ "$(tr -d ' \r\n' <"$EV/vmid.txt")" = "$VMID" ] || die "evidence does not belong to VM $VMID ($EV/vmid.txt missing or different)" 1
+[ -f "$EV/scsi0-volume.txt" ] || die "evidence has no scsi0-volume.txt" 1
+LIVE_VOL=$(scsi0_volume "$VMID") || exit $?
+[ "$LIVE_VOL" = "$(tr -d ' \r\n' <"$EV/scsi0-volume.txt")" ] || die "live scsi0 volume $LIVE_VOL differs from the inspected volume in the evidence" 1
 [ ! -e "$DUMPDIR/dump" ] || die "$DUMPDIR/dump already exists; refusing to mix archives" 1
 
 R="$DUMPDIR/backup-$(date -u +%Y%m%dT%H%M%SZ)"

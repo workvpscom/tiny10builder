@@ -18,6 +18,8 @@ require_vmid_min() {
   case "$v" in
     '' | *[!0-9]* | 0*) die "VMID '$v' is not a plain positive number" 2 ;;
   esac
+  # More than 9 digits could overflow the numeric test below (which would then fail open).
+  [ "${#v}" -le 9 ] || die "VMID '$v' is too long" 2
   if [ "$v" -lt "$TINY10_MIN_VMID" ]; then
     die "refusing VMID $v: tiny10 scripts only touch VMIDs >= $TINY10_MIN_VMID" 2
   fi
@@ -43,6 +45,25 @@ require_free_gb() {
   fi
 }
 
+# require_lvm_free_gb <storage> <gib>: exit 3 unless `pvesm status --storage <storage>` shows the storage as
+# "active" with at least <gib> GiB (1024^3 bytes; pvesm reports KiB) available. Fails closed on any output that
+# cannot be parsed. Expected row (columns Name Type Status Total Used Available %):
+#   local-lvm     lvmthin     active       354275328        65966066       288309261   18.62%
+require_lvm_free_gb() {
+  local storage=${1:-} need_gib=${2:-} out row status avail
+  out=$(pvesm status --storage "$storage" 2>/dev/null) || die "cannot read status of storage '$storage'" 3
+  row=$(printf '%s\n' "$out" | awk -v s="$storage" '$1 == s && NF >= 6 { print $3, $6; exit }')
+  [ -n "$row" ] || die "cannot parse pvesm status output for storage '$storage'" 3
+  status=${row% *}
+  avail=${row#* }
+  [ "$status" = active ] || die "storage '$storage' is not active (status: $status)" 3
+  case "$avail" in '' | *[!0-9]*) die "cannot parse available space of storage '$storage' ('$avail')" 3 ;; esac
+  [ "${#avail}" -le 15 ] || die "implausible available space of storage '$storage' ('$avail')" 3
+  if [ "$avail" -lt $((need_gib * 1024 * 1024)) ]; then
+    die "storage '$storage' has only $((avail / 1024 / 1024)) GiB free, need at least $need_gib GiB" 3
+  fi
+}
+
 # valid_vm_name <name>: NetBIOS-safe computer name, <= 15 chars, letters/digits/hyphen,
 # no leading/trailing hyphen, not all digits.
 valid_vm_name() {
@@ -56,16 +77,26 @@ valid_vm_name() {
   esac
 }
 
-# scsi0_device <vmid> [qm-config-file]: block device of scsi0 on LVM-thin storage, derived from `qm config`.
-# Falls back to /dev/<vg>/vm-<vmid>-disk-1.
-scsi0_device() {
+# scsi0_volume <vmid> [qm-config-file]: prints the scsi0 volume id (e.g. local-lvm:vm-9210-disk-1) taken from
+# `qm config` (or the given file). Dies (exit 1) when the VM has no `scsi0: <storage>:vm-<vmid>-disk-<N>` line.
+scsi0_volume() {
   local vmid=$1 cfg=${2:-} line vol
   if [ -n "$cfg" ]; then line=$(grep '^scsi0:' "$cfg" || true); else line=$(qm config "$vmid" | grep '^scsi0:' || true); fi
   vol=${line#scsi0: }
   vol=${vol%%,*}
-  vol=${vol#*:}
-  case "$vol" in vm-"$vmid"-disk-*) ;; *) vol="vm-$vmid-disk-1" ;; esac
-  printf '/dev/%s/%s\n' "${TINY10_VG:-pve}" "$vol"
+  case "$vol" in
+    *:vm-"$vmid"-disk-[0-9]*) ;;
+    *) die "VM $vmid has no 'scsi0: <storage>:vm-$vmid-disk-<N>' line in its config" 1 ;;
+  esac
+  printf '%s\n' "$vol"
+}
+
+# scsi0_device <vmid> [qm-config-file]: block device of scsi0 on LVM-thin storage (/dev/<vg>/<volume>), derived
+# from scsi0_volume; there is no fallback.
+scsi0_device() {
+  local vol
+  vol=$(scsi0_volume "$@") || exit $?
+  printf '/dev/%s/%s\n' "${TINY10_VG:-pve}" "${vol#*:}"
 }
 
 # find_ntfs_partition: reads `sfdisk -d` text on stdin, prints "<start> <size>" (sectors) of the largest

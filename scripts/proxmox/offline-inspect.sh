@@ -3,7 +3,7 @@
 # Read-only offline inspection of a stopped, sysprepped tiny10 source VM.
 # Usage: offline-inspect.sh <vmid> <outdir>      (<outdir> must not exist; its parent must)
 # backup.sh expects the evidence at <dumpdir>/offline-evidence, i.e. run with <outdir> = <dumpdir>/offline-evidence.
-# Evidence layout: inspect.exit, inspect.log, guest/Tiny11Template/..., guest/Sysprep/{Sysprep_succeeded.tag,Panther/},
+# Evidence layout: inspect.exit, inspect.log, vmid.txt, scsi0-volume.txt (backup.sh ties both to the VM), guest/Tiny11Template/..., guest/Sysprep/{Sysprep_succeeded.tag,Panther/},
 # guest/cloudbase/..., vioscsi-installed.sha256, evidence.sha256. The loop device is read-only and always detached.
 # Success rule (lib.sh sysprep_evidence_ok): finalization-status.json is SysprepReturned or SysprepStarting, AND
 # Sysprep_succeeded.tag is present, AND Sysprep_failed.tag is absent. Sysprep /shutdown can power the VM off before the
@@ -37,6 +37,8 @@ cleanup() {
 trap cleanup EXIT
 
 qm config "$VMID" >"$E/qm-before.conf"
+printf '%s\n' "$VMID" >"$E/vmid.txt"
+scsi0_volume "$VMID" "$E/qm-before.conf" >"$E/scsi0-volume.txt"
 DEV=$(scsi0_device "$VMID" "$E/qm-before.conf")
 [ -z "$(losetup -j "$DEV")" ] || die "$DEV already has a loop device attached" 1
 sfdisk -d "$DEV" >"$E/partition-table.txt"

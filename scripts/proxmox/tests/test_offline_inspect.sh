@@ -58,6 +58,8 @@ assert_file "$WORK/out/guest/Sysprep/Panther/setupact.log"
 assert_file "$WORK/out/vioscsi-installed.sha256"
 assert_file "$WORK/out/guest/cloudbase/Program Files/Cloudbase Solutions/Cloudbase-Init/Python/Lib/site-packages/tiny10_cloudbase.py"
 assert_file "$WORK/out/evidence.sha256"
+assert_eq "$(cat "$WORK/out/vmid.txt")" 9200
+assert_eq "$(cat "$WORK/out/scsi0-volume.txt")" local-lvm:vm-9200-disk-1
 if grep -rqi chrome "$S"; then fail "script mentions chrome"; else _ok; fi
 
 new_case inspect-starting-with-tag

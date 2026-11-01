@@ -21,6 +21,36 @@ run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min 9200"; assert_rc 0
 run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min 12345"; assert_rc 0
 run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min 09300"; assert_rc 2
 
+run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min 99999999999999999999"; assert_rc 2
+run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min 9999999999"; assert_rc 2
+run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min 999999999"; assert_rc 0
+run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min +9200"; assert_rc 2
+run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min ' 9200'"; assert_rc 2
+run bash -c ". '$SCRIPTS/lib.sh'; require_vmid_min 9200abc"; assert_rc 2
+
+# scsi0_volume / scsi0_device: no silent fallback
+printf 'scsi0: local-lvm:vm-9210-disk-3,iothread=1,size=20G\n' >"$T/c1.conf"
+run bash -c ". '$SCRIPTS/lib.sh'; scsi0_volume 9210 '$T/c1.conf'"; assert_rc 0; assert_eq "$OUT" local-lvm:vm-9210-disk-3
+run bash -c ". '$SCRIPTS/lib.sh'; scsi0_device 9210 '$T/c1.conf'"; assert_rc 0; assert_eq "$OUT" /dev/pve/vm-9210-disk-3
+run bash -c ". '$SCRIPTS/lib.sh'; scsi0_device 9211 '$T/c1.conf'"; assert_rc_nonzero; assert_out 'no .scsi0'
+printf 'sata0: local-lvm:vm-9210-disk-1,size=20G\n' >"$T/c2.conf"
+run bash -c ". '$SCRIPTS/lib.sh'; scsi0_device 9210 '$T/c2.conf'"; assert_rc_nonzero; assert_out 'no .scsi0'
+
+# require_lvm_free_gb <storage> <gib> (pvesm reports KiB; 40 GiB = 41943040 KiB)
+new_case lvm-free
+lv() { run bash -c ". '$SCRIPTS/lib.sh'; require_lvm_free_gb local-lvm 40"; }
+lv; assert_rc 0; assert_logged '^pvesm status --storage local-lvm'
+STUB_LVM_AVAIL=41943040 lv; assert_rc 0
+STUB_LVM_AVAIL=41943039 lv; assert_rc 3
+STUB_LVM_AVAIL=31457280 lv; assert_rc 3; assert_out '30 GiB'
+STUB_LVM_STATUS=inactive lv; assert_rc 3; assert_out 'not active'
+STUB_PVESM_RAW='' lv; assert_rc 3
+STUB_PVESM_RAW='garbage' lv; assert_rc 3
+STUB_PVESM_RAW=$'Name Type Status\nlocal-lvm lvmthin active 1 2\n' lv; assert_rc 3
+STUB_PVESM_RAW=$'Name Type Status Total Used Available %\nother lvmthin active 1 2 99999999999 1%\n' lv; assert_rc 3
+STUB_PVESM_RAW=$'Name Type Status Total Used Available %\nlocal-lvm lvmthin active 1 2 12x4 1%\n' lv; assert_rc 3
+STUB_PVESM_RAW=$'Name Type Status Total Used Available %\nlocal-lvm lvmthin active 1 2 -5 1%\n' lv; assert_rc 3
+
 # partition picker: largest NTFS data partition wins, nothing hard-coded
 cat >"$T/sfdisk.txt" <<'S'
 label: gpt
