@@ -88,6 +88,8 @@ public sealed class SetupInstallerTests
         var drivers = calls.Where(args => args.Contains("/Add-Driver")).ToArray();
         Assert.Equal(2, drivers.Length);
         Assert.All(drivers, args => Assert.Contains(args, arg => arg.EndsWith("vioscsi.inf", StringComparison.Ordinal)));
+        Assert.All(drivers, args => Assert.Contains(args, arg => arg.StartsWith("/Driver:", StringComparison.Ordinal) &&
+            arg.Contains(@"tiny11-template\drivers\", StringComparison.OrdinalIgnoreCase)));
         // Each index: Mount-Image, then Add-Driver, then Unmount /Commit, in that order.
         var sequence = calls.Select((args, i) => (args, i)).Where(x => x.args.Contains("/Add-Driver")).Select(x => x.i).ToArray();
         foreach (var at in sequence)

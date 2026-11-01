@@ -13,7 +13,7 @@ public sealed class TemplatePipelineTests
     public async Task Template_checkpoint_preserves_payload_and_resumes_without_cache_when_configured()
     {
         var cache = TemplateArtifactFactAttribute.Require("TINY11_TEST_TEMPLATE_CACHE");
-        using var fixture = new BuildFixture(build: 26300);
+        using var fixture = new BuildFixture();
         // AC-S2: Use the supported fixed Core profile while exercising Setup checkpoint recovery.
         var recipe = Profile(fixture);
         SeedCache(cache, recipe.WorkspacePath);
@@ -83,7 +83,7 @@ public sealed class TemplatePipelineTests
     public async Task Changed_template_payload_is_refused_on_resume_when_configured()
     {
         var cache = TemplateArtifactFactAttribute.Require("TINY11_TEST_TEMPLATE_CACHE");
-        using var fixture = new BuildFixture(build: 26300);
+        using var fixture = new BuildFixture();
         var recipe = Profile(fixture);
         SeedCache(cache, recipe.WorkspacePath);
         var engine = new BuildEngine(new SignatureBoundaryRunner(fixture.Runner), new FakeMediaFactory(), fixture.Registry, fixture.Operations, new FakeHost());
@@ -106,7 +106,7 @@ public sealed class TemplatePipelineTests
     public async Task Invalid_initial_answer_is_refused_before_iso_creation_when_configured()
     {
         var cache = TemplateArtifactFactAttribute.Require("TINY11_TEST_TEMPLATE_CACHE");
-        using var fixture = new BuildFixture(build: 26300);
+        using var fixture = new BuildFixture();
         var recipe = Profile(fixture);
         SeedCache(cache, recipe.WorkspacePath);
         var changed = false;
@@ -133,7 +133,7 @@ public sealed class TemplatePipelineTests
     public async Task Configuration_bom_is_refused_even_with_updated_manifest_when_configured()
     {
         var cache = TemplateArtifactFactAttribute.Require("TINY11_TEST_TEMPLATE_CACHE");
-        using var fixture = new BuildFixture(build: 26300);
+        using var fixture = new BuildFixture();
         var recipe = Profile(fixture);
         SeedCache(cache, recipe.WorkspacePath);
         var job = Path.Combine(recipe.WorkspacePath, "tiny11-" + Guid.NewGuid().ToString("N"));
@@ -164,7 +164,7 @@ public sealed class TemplatePipelineTests
     public async Task Scsi_Setup_failure_keeps_original_boot_image_until_all_indexes_commit()
     {
         var cache = TemplateArtifactFactAttribute.Require("TINY11_TEST_TEMPLATE_CACHE");
-        using var fixture = new BuildFixture(build: 26300);
+        using var fixture = new BuildFixture();
         var recipe = Profile(fixture);
         SeedCache(cache, recipe.WorkspacePath);
         var bootMounts = 0;
@@ -196,7 +196,7 @@ public sealed class TemplatePipelineTests
     private static async Task RejectCatalogAsync(string rejectedCatalog)
     {
         var cache = TemplateArtifactFactAttribute.Require("TINY11_TEST_TEMPLATE_CACHE");
-        using var fixture = new BuildFixture(build: 26300);
+        using var fixture = new BuildFixture();
         SeedCache(cache, fixture.Recipe.WorkspacePath);
         var job = Path.Combine(fixture.Recipe.WorkspacePath, "tiny11-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(job);
@@ -211,7 +211,7 @@ public sealed class TemplatePipelineTests
     public async Task Rehashed_scsi_payload_is_refused_by_pinned_policy()
     {
         var cache = TemplateArtifactFactAttribute.Require("TINY11_TEST_TEMPLATE_CACHE");
-        using var fixture = new BuildFixture(build: 26300);
+        using var fixture = new BuildFixture();
         SeedCache(cache, fixture.Recipe.WorkspacePath);
         var job = Path.Combine(fixture.Recipe.WorkspacePath, "tiny11-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(job);

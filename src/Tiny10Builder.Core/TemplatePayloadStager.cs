@@ -121,7 +121,8 @@ public sealed class TemplatePayloadStager(IProcessRunner runner, TimeSpan? subpr
         }
     }
 
-    private static readonly IReadOnlyDictionary<string, string> DriverHashes = new Dictionary<string, string>
+    // Provenance of these pins: see VirtioDriverProvenance.
+    internal static readonly IReadOnlyDictionary<string, string> DriverHashes = new Dictionary<string, string>
     {
         ["vioser.cat"] = "1E93A77AA320F515E6998DA233FA6F1B0E1DA9409EB7AACEDCFD4D21DF255E4D",
         ["vioser.inf"] = "4A8FCFDEEDBF05BF0B02535ACE5156D5DB5F1C229D30532F88AE477ADF82BEED",

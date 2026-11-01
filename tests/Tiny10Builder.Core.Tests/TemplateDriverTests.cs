@@ -20,6 +20,46 @@ public sealed class TemplateDriverTests
     public void Embedded_driver_preserves_approved_package_bytes(string name, string hash) =>
         Assert.Equal(hash, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(TemplateGuestAssets.Driver(name))));
 
+    // Provenance: the embedded Windows 10 files are the virtio-win-0.1.240 w10/amd64 files and match the code pins.
+    private static readonly Dictionary<string, string> ReferenceHashes = new()
+    {
+        ["vioscsi.cat"] = "F484461B7202A840D6F70ABC2EDFD82A01DD44349D234FAED9166D561D199B6A",
+        ["vioscsi.inf"] = "E49A966F7313DA4F6130DB00D84B57A167ADA0DE3D877C7CC584A7AED99C5BA2",
+        ["vioscsi.sys"] = "BE1FD2D12FA178D44CCC40548CC160D695A356566414E88976FC33F9F6C5AFA3",
+        ["vioser.cat"] = "1E93A77AA320F515E6998DA233FA6F1B0E1DA9409EB7AACEDCFD4D21DF255E4D",
+        ["vioser.inf"] = "4A8FCFDEEDBF05BF0B02535ACE5156D5DB5F1C229D30532F88AE477ADF82BEED",
+        ["vioser.sys"] = "B6767019C660903B59A3BB8396C40EDA2DE3CDA51CCC121B229050AE28B619FF"
+    };
+
+    [Fact]
+    public void Driver_pins_equal_the_embedded_files_and_the_virtio_win_w10_reference_hashes()
+    {
+        Assert.Equal(ReferenceHashes.OrderBy(p => p.Key), TemplatePayloadStager.DriverHashes.OrderBy(p => p.Key));
+        foreach (var (name, hash) in ReferenceHashes)
+            Assert.Equal(hash, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(TemplateGuestAssets.Driver(name))));
+    }
+
+    [Fact]
+    public void Driver_provenance_records_the_virtio_win_0_1_240_w10_source()
+    {
+        Assert.Equal("virtio-win-0.1.240", VirtioDriverProvenance.IsoLabel);
+        Assert.Equal("EBD48258668F7F78E026ED276C28A9D19D83E020FFA080AD69910DC86BBCBCC6", VirtioDriverProvenance.IsoSha256);
+        Assert.Equal("vioscsi/w10/amd64", VirtioDriverProvenance.VioscsiSourceDirectory);
+        Assert.Equal("vioserial/w10/amd64", VirtioDriverProvenance.VioserialSourceDirectory);
+    }
+
+    [Theory]
+    [InlineData("vioscsi.inf")]
+    [InlineData("vioser.inf")]
+    public void Driver_inf_carries_the_pinned_version_and_the_windows_8_1_and_later_decoration(string name)
+    {
+        var inf = Encoding.UTF8.GetString(TemplateGuestAssets.Driver(name));
+        Assert.Contains("07/21/2023," + VirtioDriverProvenance.DriverVersion, inf, StringComparison.Ordinal);
+        Assert.Equal("100.93.104.24000", VirtioDriverProvenance.DriverVersion);
+        Assert.Contains(VirtioDriverProvenance.InfDecoration, inf, StringComparison.Ordinal);
+        Assert.Equal("NTamd64.6.3", VirtioDriverProvenance.InfDecoration);
+    }
+
     // AC-S4: Observe the actual system disk's PCI ancestry, not unrelated controllers.
     [Theory]
     [InlineData("1004", "current", true)]
