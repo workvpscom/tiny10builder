@@ -8,7 +8,12 @@ namespace Tiny10Builder.Cli;
 [SupportedOSPlatform("windows")]
 public sealed class BuildEngineAdapter : ICliEngine
 {
-    private static readonly Lazy<HttpClient> Http = new(() => new HttpClient { Timeout = TimeSpan.FromMinutes(5) });
+    private static readonly Lazy<HttpClient> Http = new(CreateClient);
+
+    // Redirects must not be followed by HttpClient: OscdimgAcquirer walks them itself and checks every hop against its host allow-list.
+    internal static HttpClientHandler CreateHandler() => new() { AllowAutoRedirect = false };
+
+    internal static HttpClient CreateClient() => new(CreateHandler()) { Timeout = TimeSpan.FromMinutes(5) };
 
     private readonly Func<string, IProgress<string>?, CancellationToken, Task<string>> acquireOscdimg;
     private readonly Func<string> findOscdimg;

@@ -179,11 +179,11 @@ public sealed class CliTests : IDisposable
     public async Task Missing_oscdimg_invokes_acquirer_and_passes_its_path_to_the_engine()
     {
         var calls = 0; string? dir = null; BuildRecipe? seen = null;
-        var adapter = Adapter(() => "", (d, _, _) => { calls++; dir = d; return Task.FromResult(@"C:	ools\oscdimg.exe"); }, r => seen = r);
+        var adapter = Adapter(() => "", (d, _, _) => { calls++; dir = d; return Task.FromResult(@"C:\tools\oscdimg.exe"); }, r => seen = r);
         var r = await Run2(adapter, Build(Recipe(false), Iso()));
         Assert.Equal(0, r.Code);
         Assert.Equal(1, calls);
-        Assert.Equal(@"C:	ools\oscdimg.exe", seen!.OscdimgPath);
+        Assert.Equal(@"C:\tools\oscdimg.exe", seen!.OscdimgPath);
         Assert.EndsWith(Path.Combine("Tiny10Builder", "tools"), dir);
         Assert.False(dir!.StartsWith(Workspace, StringComparison.OrdinalIgnoreCase));
     }
@@ -201,11 +201,11 @@ public sealed class CliTests : IDisposable
     public async Task Installed_oscdimg_does_not_invoke_acquirer()
     {
         var calls = 0; BuildRecipe? seen = null;
-        var adapter = Adapter(() => @"C:dk\oscdimg.exe", (_, _, _) => { calls++; return Task.FromResult("x"); }, r => seen = r);
+        var adapter = Adapter(() => @"C:\adk\oscdimg.exe", (_, _, _) => { calls++; return Task.FromResult("x"); }, r => seen = r);
         var r = await Run2(adapter, Build(Recipe(false), Iso()));
         Assert.Equal(0, r.Code);
         Assert.Equal(0, calls);
-        Assert.Equal(@"C:dk\oscdimg.exe", seen!.OscdimgPath);
+        Assert.Equal(@"C:\adk\oscdimg.exe", seen!.OscdimgPath);
     }
 
     [Theory]
@@ -241,5 +241,14 @@ public sealed class CliTests : IDisposable
         var o = new StringWriter(); var e = new StringWriter();
         var code = await CliApp.RunAsync(args, engine, o, e, default);
         return (code, o.ToString(), e.ToString());
+    }
+
+    [Fact]
+    public void Production_http_handler_does_not_auto_follow_redirects()
+    {
+        using var handler = BuildEngineAdapter.CreateHandler();
+        Assert.False(handler.AllowAutoRedirect);
+        using var client = BuildEngineAdapter.CreateClient();
+        Assert.Equal(TimeSpan.FromMinutes(5), client.Timeout);
     }
 }
