@@ -118,7 +118,7 @@ public sealed class NativeTests(Xunit.Abstractions.ITestOutputHelper output)
             else
                 Assert.False(File.Exists(Path.Combine(mount, path)));
         }
-        Assert.All(browserPaths, path => Assert.False(File.Exists(Path.Combine(mount, path))));
+        Assert.All(browserPaths, path => Assert.Equal(profile == TemplateProfile.ProxmoxCloudbaseInit, File.Exists(Path.Combine(mount, path))));
         Assert.False(File.Exists(Path.Combine(mount, @"Windows\System32\OneDriveSetup.exe")));
     }
 
@@ -311,7 +311,7 @@ public sealed class NativeTests(Xunit.Abstractions.ITestOutputHelper output)
                 Assert.False(File.Exists(file));
         }
         Assert.False(Directory.Exists(Path.Combine(store, "amd64_optional_fixture")));
-        Assert.False(Directory.Exists(Path.Combine(store, "amd64_microsoft-edge-browser_fixture")));
+        Assert.Equal(profile == TemplateProfile.ProxmoxCloudbaseInit, Directory.Exists(Path.Combine(store, "amd64_microsoft-edge-browser_fixture")));
         Assert.True(Directory.Exists(Path.Combine(store, "amd64_common-controls")));
     }
 

@@ -122,9 +122,10 @@ public sealed class CompatibilityTests
         Assert.Equal(3, Enum.GetValues<BuildMode>().Length);
         Assert.Equal(CleanupCatalog.ForPreset(CleanupPreset.Original), CleanupCatalog.ForMode(BuildMode.Tiny11));
         var core = CleanupCatalog.Options.Where(o => o.Minimal || o.Id is
-            "language-extras" or "edge-files" or "onedrive-files" or
+            "language-extras" or "onedrive-files" or
             "reserved-storage" or "device-encryption").Select(o => o.Id).ToArray();
         Assert.Equal(core, CleanupCatalog.ForMode(BuildMode.Tiny11Core));
+        Assert.DoesNotContain("edge-files", CleanupCatalog.ForMode(BuildMode.Tiny11Core));
         Assert.Empty(CleanupCatalog.ForMode(BuildMode.Custom));
         Assert.Throws<ArgumentOutOfRangeException>(() => CleanupCatalog.ForMode((BuildMode)99));
     }
@@ -243,9 +244,10 @@ public sealed class CompatibilityTests
     [InlineData("amd64_microsoft-edge-webview_31bf_10.0.26300_none_x", true)]
     [InlineData("wow64_microsoft-edge-webview_31bf_10.0.26300_none_x", true)]
     [InlineData("AMD64_MICROSOFT-EDGE-WEBVIEW.Resources_31bf_en-us_x", true)]
-    [InlineData("amd64_microsoft-edge-browser_31bf_10.0.26300_none_x", false)]
+    [InlineData("amd64_microsoft-edge-browser_31bf_10.0.26300_none_x", true)]
+    [InlineData("amd64_microsoft-windows-e..crosoftedgedevtools_31bf_10.0.19041.1_none_x", true)]
     [InlineData("amd64_optional-component_31bf_10.0.26300_none_x", false)]
-    public void Core_webview_payload_preservation_is_profile_scoped(string name, bool preservedByProfile)
+    public void Core_edge_payload_preservation_is_profile_scoped(string name, bool preservedByProfile)
     {
         Assert.Equal(preservedByProfile, ImageOperations.PreserveCoreDirectory(name, TemplateProfile.ProxmoxCloudbaseInit));
         Assert.False(ImageOperations.PreserveCoreDirectory(name, TemplateProfile.None));

@@ -27,6 +27,16 @@ public sealed class ImageOperations : IImageOperations
         @"(?:common-controls|c\.\.-controls|gdiplus|isolationautomation|utomation\.proxystub|microsoft\.vc\d+\.crt|servicing|s\.\.(?:ngstack|stack))",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    // WinSxS directory-name substrings (case-insensitive) kept by TrimCore when the Proxmox profile is active, so the
+    // Chromium Edge install and legacy EdgeHTML components survive. Rule: profile-only (non-profile Core builds are unchanged).
+    // Starting set; tuned against a real install in Task 11.
+    public static readonly string[] EdgeKeepPatterns =
+    [
+        "microsoft-edge", "microsoft-windows-edge", "microsoftedge", "microsoft-edge-webview",
+        // Truncated WinSxS names such as amd64_microsoft-windows-e..crosoftedgedevtools_* drop the leading "mi".
+        "crosoftedge"
+    ];
+
     public IReadOnlyList<ImageCleanupResult> CleanRedundantData(string mount, Action<string> log, CancellationToken token) =>
         new OfflineDataCleaner().Clean(mount, log, token);
 
@@ -121,18 +131,15 @@ public sealed class ImageOperations : IImageOperations
             foreach (var path in new[] { @"Windows\System32\OneDriveSetup.exe", @"Windows\SysWOW64\OneDriveSetup.exe" })
                 Remove(mount, path, log, turboMode: turboMode);
         if (!options.Contains("edge-files")) return;
-        var preserveWebView = templateProfile == TemplateProfile.ProxmoxCloudbaseInit;
-        // EdgeCore shares browser/Runtime binaries; EdgeUpdate services the Evergreen Runtime too.
-        // Remove only the browser tree for this profile, leaving existing Runtime dependencies intact.
-        var edgeDirectories = preserveWebView ? new[] { "Edge" } : new[] { "Edge", "EdgeCore", "EdgeUpdate", "EdgeWebView" };
-        foreach (var basePath in new[] { "Program Files", "Program Files (x86)" })
-            foreach (var name in edgeDirectories)
-                Remove(mount, Path.Combine(basePath, "Microsoft", name), log, turboMode: turboMode);
-        if (preserveWebView)
+        if (templateProfile == TemplateProfile.ProxmoxCloudbaseInit)
         {
-            log("Proxmox profile: preserving existing WebView2 Runtime payloads, EdgeCore and EdgeUpdate; no Runtime is installed by this step.");
+            // Unconditional under the Proxmox profile, even if a Custom recipe selects edge-files.
+            log("Proxmox profile: Edge is preserved (Edge, EdgeUpdate, EdgeCore, EdgeWebView and WinSxS Edge families); edge-files was skipped.");
             return;
         }
+        foreach (var basePath in new[] { "Program Files", "Program Files (x86)" })
+            foreach (var name in new[] { "Edge", "EdgeCore", "EdgeUpdate", "EdgeWebView" })
+                Remove(mount, Path.Combine(basePath, "Microsoft", name), log, turboMode: turboMode);
         Remove(mount, @"Windows\System32\Microsoft-Edge-Webview", log, turboMode: turboMode);
         var store = Path.Combine(mount, @"Windows\WinSxS");
         foreach (var path in Directory.EnumerateDirectories(store).Where(p =>
@@ -144,7 +151,7 @@ public sealed class ImageOperations : IImageOperations
     {
         return CoreMetadataDirectories.Contains(name) || CoreRuntimePattern.IsMatch(name) ||
             (templateProfile == TemplateProfile.ProxmoxCloudbaseInit &&
-             name.Contains("microsoft-edge-webview", StringComparison.OrdinalIgnoreCase));
+             EdgeKeepPatterns.Any(pattern => name.Contains(pattern, StringComparison.OrdinalIgnoreCase)));
     }
 
     public void TrimCore(string mount, string architecture, Action<string> log, CancellationToken token, bool turboMode = false,

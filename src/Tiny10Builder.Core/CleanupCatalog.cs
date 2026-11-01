@@ -28,7 +28,7 @@ public static class CleanupCatalog
             "Microsoft.WindowsAlarms", "Microsoft.WindowsSoundRecorder", "Microsoft.MicrosoftStickyNotes"),
         App("paint", "Paint", "Remove Paint. Leave unchecked to keep it.", false, false, "Microsoft.MSPaint"),
         App("camera", "Camera", "Remove the Camera app, not camera drivers.", false, false, "Microsoft.WindowsCamera"),
-        new("edge-files", "Remove Edge and WebView2", "Delete Edge and WebView2 files. Apps that require WebView2 may stop working. Updates may reinstall Edge.",
+        new("edge-files", "Remove Edge browser", "Delete the Edge browser, EdgeUpdate and related Edge trees. Updates may reinstall Edge.",
             "Advanced / original builder", OptionKind.File, false, false, []),
         new("onedrive-files", "Remove OneDrive setup binaries", "Remove both architecture-specific OneDrive installers from the offline image.",
             "Advanced / original builder", OptionKind.File, false, false, []),
@@ -77,7 +77,7 @@ public static class CleanupCatalog
     {
         BuildMode.Tiny11 => ForPreset(CleanupPreset.Original),
         BuildMode.Tiny11Core => Options.Where(o => o.Minimal || o.Id is
-            "language-extras" or "edge-files" or "onedrive-files" or
+            "language-extras" or "onedrive-files" or
             "reserved-storage" or "device-encryption")
             .Select(o => o.Id).ToArray(),
         BuildMode.Custom => [],
