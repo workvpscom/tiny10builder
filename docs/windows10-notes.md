@@ -22,3 +22,13 @@ Raw DISM output for index 6 lives in `tests/fixtures/win10-19045/` (`appx.txt` p
 ## Build host
 
 VM 9200 `tiny10-build-host`: Windows 10 Pro 19045, Audit mode (built-in Administrator), QGA installed from virtio-win-0.1.240 ISO (build host only; templates use the pinned QGA 110.2.3). Source VMs must use `scsi0` (virtio-scsi-single), never `sata0`.
+
+## Spike result (Task 1, 2026-11-01): stock Win10 Setup honours the answer file
+
+Spike VM 9201 (Q35, OVMF, no TPM, `scsi0` 20G on virtio-scsi-single, e1000), booted from the stock ISO plus a second small ISO carrying `autounattend.xml`:
+
+- Setup consumed the answer file: wiped disk 0, created EFI/MSR/NTFS partitions, installed by `/IMAGE/NAME` = `Windows 10 Pro`. The product-key page still showed (`ProductKey/WillShowUI=Always`, as in the Win11 profile); "I don't have a product key" was chosen by the operator.
+- `DriverPaths` pointing at the `virtio-win-0.1.240` ISO (`<drive>:\vioscsi\w10\amd64`) was enough for Setup to see the SCSI disk, and `vioscsi.sys` ended up in `Windows\System32\drivers`.
+- `oobeSystem` `Reseal Mode=Audit` entered Audit mode as built-in Administrator; the `auditUser` `RunSynchronousCommand` ran and wrote `C:\spike-marker.txt` (`audit-ok`) before shutting down.
+- Offline inspection (`losetup --read-only`, `ntfs3 ro,noexec`): `State.ini` shows `ImageState=IMAGE_STATE_SPECIALIZE_RESEAL_TO_AUDIT`.
+- Conclusion: no `winpeshl.ini` override and no `setup_old.exe` are needed on Win10. `vioscsi` still has to be injected into `boot.wim` for the product (Task 6); the spike used external DriverPaths only.
