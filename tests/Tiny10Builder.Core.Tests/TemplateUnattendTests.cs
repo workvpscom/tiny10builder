@@ -28,7 +28,7 @@ public sealed class TemplateUnattendTests
     [Fact]
     public void Template_answer_file_enters_audit_without_credentials_or_disk_wipe()
     {
-        var image = new WindowsImage(6, "Windows 11 Pro", "Pro", "x64", new Version(10, 0, 26300, 9457),
+        var image = new WindowsImage(6, "Windows 10 Pro", "Pro", "x64", new Version(10, 0, 19045, 2006),
             "Professional", "Client", 26770709765);
         var recipe = new BuildRecipe { TemplateProfile = TemplateProfile.ProxmoxCloudbaseInit };
         var document = XDocument.Parse(UnattendBuilder.Create(image, recipe));

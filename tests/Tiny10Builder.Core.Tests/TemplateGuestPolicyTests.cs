@@ -1,4 +1,5 @@
 using Tiny10Builder.Core;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Tiny10Builder.Core.Tests;
@@ -44,5 +45,53 @@ public sealed class TemplateGuestPolicyTests
         Assert.True(TemplateGuestAssets.PrepareScript.IndexOf("Assert-TemplatePreparationContext", StringComparison.Ordinal) <
                     TemplateGuestAssets.PrepareScript.IndexOf("'Configure guest policy'", StringComparison.Ordinal));
         Assert.Contains("Configure-GuestPolicy.ps1') -VerifyOnly", TemplateGuestAssets.FinalizeScript);
+    }
+
+    // Module-backed cmdlets (NetSecurity, Storage, PnpDevice, CimCmdlets, LocalAccounts, Security) that a Core-trimmed
+    // Windows 10 image must still resolve. The on-VM check (Task 11) uses exactly this list. The Python plugin
+    // additionally calls Get-CimInstance, Get-NetIPAddress, Get-NetRoute and Get-DnsClientServerAddress.
+    private static readonly Regex ModuleCmdlet = new(
+        @"\b[A-Z][a-z]+-(?:Net[A-Za-z]+|Partition|PnpDevice[A-Za-z]*|CimInstance|DnsClient[A-Za-z]*|LocalUser|AuthenticodeSignature)\b",
+        RegexOptions.Compiled);
+
+    public static TheoryData<string, string> ExpectedModuleCmdlets => new()
+    {
+        { "Configure-GuestPolicy.ps1", "Get-CimInstance Get-NetFirewallAddressFilter Get-NetFirewallPortFilter Get-NetFirewallProfile Get-NetFirewallRule New-NetFirewallRule Remove-NetFirewallRule Set-NetFirewallProfile" },
+        { "Create-DisabledServiceTransform.ps1", "" },
+        { "Finalize-Template.ps1", "Get-CimInstance Set-LocalUser" },
+        { "Initialize-Clone.ps1", "Get-CimInstance" },
+        { "Prepare-Template.ps1", "Get-AuthenticodeSignature Get-CimInstance" },
+        { "Template-State.ps1", "Get-CimInstance Get-Partition Get-PnpDeviceProperty" },
+    };
+
+    [Theory]
+    [MemberData(nameof(ExpectedModuleCmdlets))]
+    public void Guest_scripts_depend_on_the_known_module_cmdlets(string script, string expected)
+    {
+        var text = script switch
+        {
+            "Configure-GuestPolicy.ps1" => TemplateGuestAssets.PolicyScript,
+            "Create-DisabledServiceTransform.ps1" => TemplateGuestAssets.TransformScript,
+            "Finalize-Template.ps1" => TemplateGuestAssets.FinalizeScript,
+            "Initialize-Clone.ps1" => TemplateGuestAssets.CloneScript,
+            "Prepare-Template.ps1" => TemplateGuestAssets.PrepareScript,
+            _ => TemplateGuestAssets.StateScript,
+        };
+        var actual = ModuleCmdlet.Matches(text).Select(m => m.Value).Distinct().Order(StringComparer.Ordinal);
+        Assert.Equal(expected.Split(' ', StringSplitOptions.RemoveEmptyEntries), actual);
+    }
+
+    // Template-State.ps1 duplicates the driver identity as literals; they must track the C# pins.
+    [Fact]
+    public void State_script_driver_literals_equal_the_provenance_and_stager_pins()
+    {
+        var state = TemplateGuestAssets.StateScript;
+        Assert.Contains("$driver.DriverVersion -eq '" + VirtioDriverProvenance.DriverVersion + "'", state);
+        var literals = Regex.Matches(state, "[0-9A-F]{64}").Select(m => m.Value).ToHashSet();
+        var mentioned = new[] { "vioser.inf", "vioser.sys", "vioscsi.inf", "vioscsi.sys" };
+        foreach (var name in mentioned)
+            Assert.Contains(TemplatePayloadStager.DriverHashes[name], literals);
+        Assert.Equal(mentioned.Length, literals.Count);
+        Assert.All(literals, hash => Assert.Contains(hash, TemplatePayloadStager.DriverHashes.Values));
     }
 }
