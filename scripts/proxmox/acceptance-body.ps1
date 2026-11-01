@@ -59,7 +59,7 @@ ScsiObservation=Get-Content 'C:\ProgramData\Tiny11Template\scsi-boot-driver-obse
 Services=Get-CimInstance Win32_Service | Where-Object { $_.Name -match 'qemu|cloudbase|TermService' } | Select-Object Name,State,StartMode,PathName
 RDPPolicy=Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' | Select-Object fDenyTSConnections
 RDPListener=Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,State
-RDPFirewall=Get-NetFirewallRule -Name 'RemoteDesktop*' | Select-Object Name,Enabled,Direction,Action
+RDPFirewall=Get-NetFirewallRule -Name 'RemoteDesktop*' | Select-Object Name,@{n='Enabled';e={[string]$_.Enabled}},Direction,Action
 RDPCertificateBinding=$rdp | Select-Object SSLCertificateSHA1Hash,SecurityLayer,UserAuthenticationRequired
 EdgeProbe=Test-EdgeProbe
 RDPCertificateSHA256=if($cert){[BitConverter]::ToString($sha.ComputeHash($cert.RawData)).Replace('-','')}

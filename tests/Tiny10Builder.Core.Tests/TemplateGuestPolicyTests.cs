@@ -47,6 +47,13 @@ public sealed class TemplateGuestPolicyTests
         Assert.Contains("Configure-GuestPolicy.ps1') -VerifyOnly", TemplateGuestAssets.FinalizeScript);
     }
 
+    [Fact]
+    public void Rdp_activation_enables_the_builtin_remote_desktop_rules_and_verifies_them()
+    {
+        Assert.Contains("Get-NetFirewallRule -Name 'RemoteDesktop-*' | Enable-NetFirewallRule", TemplateGuestAssets.PolicyScript);
+        Assert.Contains("Built-in Remote Desktop firewall rules must be enabled", TemplateGuestAssets.PolicyScript);
+    }
+
     // Module-backed cmdlets (NetSecurity, Storage, PnpDevice, CimCmdlets, LocalAccounts, Security) that a Core-trimmed
     // Windows 10 image must still resolve. The on-VM check (Task 11) uses exactly this list. The Python plugin
     // additionally calls Get-CimInstance, Get-NetIPAddress, Get-NetRoute and Get-DnsClientServerAddress.
@@ -56,7 +63,7 @@ public sealed class TemplateGuestPolicyTests
 
     public static TheoryData<string, string> ExpectedModuleCmdlets => new()
     {
-        { "Configure-GuestPolicy.ps1", "Get-CimInstance Get-NetFirewallAddressFilter Get-NetFirewallPortFilter Get-NetFirewallProfile Get-NetFirewallRule New-NetFirewallRule Remove-NetFirewallRule Set-NetFirewallProfile" },
+        { "Configure-GuestPolicy.ps1", "Enable-NetFirewallRule Get-CimInstance Get-NetFirewallAddressFilter Get-NetFirewallPortFilter Get-NetFirewallProfile Get-NetFirewallRule New-NetFirewallRule Remove-NetFirewallRule Set-NetFirewallProfile" },
         { "Create-DisabledServiceTransform.ps1", "" },
         { "Finalize-Template.ps1", "Get-CimInstance Set-LocalUser" },
         { "Initialize-Clone.ps1", "Get-CimInstance" },

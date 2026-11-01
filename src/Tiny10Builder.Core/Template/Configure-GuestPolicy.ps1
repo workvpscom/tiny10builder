@@ -13,6 +13,8 @@ if (-not $VerifyOnly -and $ActivateRdp) {
     $existing = Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
     if ($existing) { Remove-NetFirewallRule -Name $ruleName }
     New-NetFirewallRule -Name $ruleName -DisplayName 'Tiny11 Template RDP' -Direction Inbound -Action Allow -Enabled True -Profile Any -Protocol TCP -LocalPort 3389 -RemoteAddress Any | Out-Null
+    # Settings > Remote Desktop shows Off unless the built-in Remote Desktop rules are enabled too.
+    Get-NetFirewallRule -Name 'RemoteDesktop-*' | Enable-NetFirewallRule
     Set-Service TermService -StartupType Automatic
     Start-Service TermService
 }
@@ -30,6 +32,8 @@ if (@(Get-NetFirewallProfile | Where-Object { -not $_.Enabled }).Count -gt 0) { 
 $rule = Get-NetFirewallRule -Name $ruleName
 $port = $rule | Get-NetFirewallPortFilter
 $address = $rule | Get-NetFirewallAddressFilter
+$builtin = @(Get-NetFirewallRule -Name 'RemoteDesktop-*')
+if ($builtin.Count -eq 0 -or @($builtin | Where-Object { $_.Enabled -ne 'True' }).Count -gt 0) { throw 'Built-in Remote Desktop firewall rules must be enabled' }
 if ($rule.Enabled -ne 'True' -or $rule.Direction -ne 'Inbound' -or $rule.Action -ne 'Allow' -or
     $port.Protocol -ne 'TCP' -or $port.LocalPort -ne '3389' -or $address.RemoteAddress -ne 'Any') { throw 'RDP firewall policy mismatch' }
 }
