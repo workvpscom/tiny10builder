@@ -38,6 +38,34 @@ def valid_hostname(name):
             not name.isdigit())
 
 
+# Software adapters that Windows 10 can list next to the real NIC. Matching is case-insensitive:
+# HARDWARE_ID_PREFIXES applies to the PnP device id, DESCRIPTION_MARKERS to the adapter description.
+# Real NICs (PCI\\... VirtIO, e1000, ...) match neither list.
+VIRTUAL_HARDWARE_ID_PREFIXES = ('root\\', '{', 'swd\\', 'bth\\')
+VIRTUAL_DESCRIPTION_MARKERS = ('kernel debug network adapter', 'wi-fi direct virtual', 'hyper-v virtual ethernet',
+                               'bluetooth', 'tap-windows', 'loopback', 'wan miniport')
+
+
+def _is_virtual_adapter(adapter):
+    hardware_id = str(adapter.get('HardwareId') or '').lower()
+    description = str(adapter.get('Description') or '').lower()
+    return (hardware_id.startswith(VIRTUAL_HARDWARE_ID_PREFIXES) or
+            any(marker in description for marker in VIRTUAL_DESCRIPTION_MARKERS))
+
+
+def select_ethernet_adapter(adapters):
+    """Return the only adapter that is Up and not virtual.
+
+    Each adapter is a dict built by WindowsBackend._adapters from Win32_NetworkAdapter:
+    Name (NetConnectionID, used as the interface alias), Description, HardwareId (PNPDeviceID) and
+    Status ('Up' when NetConnectionStatus is 2, Connected).
+    """
+    real = [a for a in adapters if a.get('Status') == 'Up' and not _is_virtual_adapter(a)]
+    if len(real) != 1:
+        raise ValueError('Expected one Ethernet adapter')
+    return real[0]
+
+
 def _hostname(service):
     import yaml
 
@@ -267,10 +295,21 @@ class WindowsBackend:
 
     def validate_network(self, desired):
         validate_static(desired)
-        adapters = self.osutils.get_network_adapters()
-        if len(adapters) != 1:
-            raise ValueError('Expected one Ethernet adapter')
-        self.interface = adapters[0][0]
+        self.interface = select_ethernet_adapter(self._adapters())['Name']
+
+    def _adapters(self):
+        # osutils lists (name, mac) pairs only; add status and hardware id from Win32_NetworkAdapter.
+        names = {entry[0] for entry in self.osutils.get_network_adapters()}
+        raw = self._powershell("$r=@(Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.NetConnectionID } | "
+                               "Select-Object NetConnectionID,Description,PNPDeviceID,NetConnectionStatus);"
+                               "ConvertTo-Json -InputObject $r -Compress")
+        rows = json.loads(raw) if raw else []
+        if isinstance(rows, dict):
+            rows = [rows]
+        return [{'Name': row['NetConnectionID'], 'Description': row.get('Description'),
+                 'HardwareId': row.get('PNPDeviceID'),
+                 'Status': 'Up' if row.get('NetConnectionStatus') == 2 else 'Down'}
+                for row in rows if row['NetConnectionID'] in names]
 
     def apply_network(self, desired):
         self.osutils.set_static_network_config(self.interface, desired['ip'], desired['prefix'],

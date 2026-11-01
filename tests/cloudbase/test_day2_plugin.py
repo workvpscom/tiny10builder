@@ -313,5 +313,57 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(self.backend.calls, [])
 
 
+class HostnameLengthTests(unittest.TestCase):
+    def test_netbios_length_limit(self):
+        self.assertTrue(module.valid_hostname('a' * 15))
+        self.assertFalse(module.valid_hostname('a' * 16))
+        self.assertFalse(module.valid_hostname('a-' * 8))
+
+    def test_sixteen_character_hostname_rejected_before_mutation(self):
+        backend, metadata = Backend(), Metadata()
+        metadata.name = 'a' * 16
+        plugin = module.ProxmoxReconcilePlugin(backend=backend, store=Store(),
+                                               network_reader=lambda s: copy.deepcopy(s.network))
+        plugin.execute(metadata, {})
+        self.assertEqual(backend.calls, [])
+
+
+def adapter(name, description, hardware_id, status='Up'):
+    return {'Name': name, 'Description': description, 'HardwareId': hardware_id, 'Status': status}
+
+
+PHYSICAL = adapter('Ethernet', 'Red Hat VirtIO Ethernet Adapter', 'PCI\\VEN_1AF4&DEV_1000&SUBSYS_00011AF4&REV_00\\3&13C0B0C5&0&18')
+KDNIC = adapter('Ethernet 2', 'Microsoft Kernel Debug Network Adapter', 'ROOT\\KDNIC\\0000')
+
+
+class SelectEthernetAdapterTests(unittest.TestCase):
+    def test_physical_chosen_over_kernel_debug_adapter(self):
+        self.assertIs(module.select_ethernet_adapter([KDNIC, PHYSICAL]), PHYSICAL)
+
+    def test_two_physical_adapters_rejected(self):
+        other = adapter('Ethernet 3', 'Intel(R) PRO/1000 MT Network Connection', 'PCI\\VEN_8086&DEV_100E\\4&0')
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter([PHYSICAL, other])
+
+    def test_no_up_adapter_rejected(self):
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter([adapter('Ethernet', 'Red Hat VirtIO Ethernet Adapter', PHYSICAL['HardwareId'], 'Disconnected'), KDNIC])
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter([])
+
+    def test_down_physical_ignored_when_one_up(self):
+        down = adapter('Ethernet 3', 'Intel(R) PRO/1000 MT Network Connection', 'PCI\\VEN_8086&DEV_100E\\4&0', 'Disconnected')
+        self.assertIs(module.select_ethernet_adapter([down, PHYSICAL]), PHYSICAL)
+
+    def test_known_software_adapters_are_virtual(self):
+        for desc, hw in (('Microsoft Wi-Fi Direct Virtual Adapter', '{5D624F94-8850-40C3-A3FA-A4FD2080BAF3}\\VWIFIMP_WFD'),
+                         ('Hyper-V Virtual Ethernet Adapter', 'ROOT\\VMS_MP\\0000'),
+                         ('Bluetooth Device (Personal Area Network)', 'BTH\\MS_BTHPAN\\6&1'),
+                         ('TAP-Windows Adapter V9', 'ROOT\\NET\\0000'),
+                         ('Microsoft KM-TEST Loopback Adapter', 'ROOT\\NET\\0001')):
+            with self.subTest(desc):
+                self.assertIs(module.select_ethernet_adapter([adapter('X', desc, hw), PHYSICAL]), PHYSICAL)
+
+
 if __name__ == '__main__':
     unittest.main()
