@@ -112,7 +112,7 @@ public static class ToolLocator
             throw new InvalidOperationException($"This image is build {image.Version.Build} (servicing base {required}), " +
                 $"but the installed image tools are version {version}. " +
                 "Install the current Windows ADK Deployment Tools " +
-                "and its servicing updates, then reopen the app; it detects them automatically. " +
+                "and its servicing updates, then install them and run the command again. " +
                 "Unknown Insider/Canary builds may need a preview ADK or a newer host. " +
                 "Download: https://learn.microsoft.com/windows-hardware/get-started/adk-install");
     }

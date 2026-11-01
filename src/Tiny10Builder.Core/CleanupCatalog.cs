@@ -49,7 +49,7 @@ public static class CleanupCatalog
         Policy("widgets", "News and Interests", "Disable the News and Interests taskbar feed by policy.", true, true),
         Policy("search", "Web search and search highlights", "Turn off web suggestions, cloud search and dynamic search highlights; keep local search.", true, true),
         Policy("onedrive", "OneDrive sync and backup prompts", "Disable OneDrive sync by policy. OneDrive binaries are retained; use this only if you do not need sync.", true, true),
-        Policy("edge", "Edge first-run and promotional UI", "Suppress first-run, sidebar and recommendations. Preserve Edge and WebView2 for app compatibility.", true, true),
+        Policy("edge", "Edge first-run and promotional UI", "Suppress first-run, sidebar and recommendations. Preserve Edge.", true, true),
         Policy("oobe", "Setup privacy and finish-setting-up nags", "Suppress privacy setup and post-sign-in setup suggestions without creating accounts or accepting the EULA.", true, true),
         Policy("cleanup", "Component cleanup", "Regular mode preserves servicing. Core additionally resets the update base before its irreversible component pruning.", true, true),
         Policy("reserved-storage", "Disable reserved storage", "Stop reserving disk space for updates. This can leave less space available during servicing.", false, false),

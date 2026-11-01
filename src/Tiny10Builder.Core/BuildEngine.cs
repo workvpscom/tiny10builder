@@ -44,7 +44,7 @@ public sealed partial class BuildEngine
         var sourceWim = InstallationMedia.ImageFile(media.RootPath);
         var image = await dism.GetImageAsync(sourceWim, recipe.ImageIndex, token).ConfigureAwait(false);
         host.ValidateImage(recipe with { OutputPath = "" }, image);
-        ImageDefaults.RequireProfessional(image);
+        await RequireProfessionalAsync(dism, sourceWim, image, token).ConfigureAwait(false);
         // A read-only inventory never uses lazy mounting: it has no 87/4350 fallback, and a failed probe costs minutes.
         var execution = BuildExecutionPlan.Create(recipe, Environment.ProcessorCount, allowOptimizedMount: false);
         using var job = BuildJob.Create(recipe.WorkspacePath, "inventory", execution.BufferedLog);
@@ -117,6 +117,33 @@ public sealed partial class BuildEngine
         }
     }
 
+    /// <summary>
+    /// Everything BuildAsync checks about the recipe, the host and the selected image, without needing oscdimg and without
+    /// touching the workspace. The CLI runs it before it downloads oscdimg, so a recipe that cannot build never causes a download.
+    /// </summary>
+    public async Task PreflightAsync(BuildRecipe recipe, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(recipe);
+        PathSafety.Validate(recipe);
+        host.ValidateTools(recipe with { OscdimgPath = "" });
+        using var media = mediaFactory.Open(recipe.SourcePath);
+        var sourceWim = InstallationMedia.ImageFile(media.RootPath);
+        var dism = new DismClient(recipe.DismPath, runner);
+        var image = await dism.GetImageAsync(sourceWim, recipe.ImageIndex, token).ConfigureAwait(false);
+        host.ValidateImage(recipe, image);
+        await RequireProfessionalAsync(dism, sourceWim, image, token).ConfigureAwait(false);
+    }
+
+    // A non-Pro selection is a validation error. The message names the selected image and, when the source has one, the Pro index.
+    private static async Task RequireProfessionalAsync(DismClient dism, string sourceWim, WindowsImage image, CancellationToken token)
+    {
+        if (ImageDefaults.IsProfessional(image)) return;
+        IReadOnlyList<WindowsImage> all;
+        try { all = await dism.GetImagesAsync(sourceWim, token).ConfigureAwait(false); }
+        catch (Exception e) when (e is not OperationCanceledException) { throw new InvalidDataException(ImageDefaults.NoProMessage); }
+        throw new InvalidDataException(ImageDefaults.NotProfessionalMessage(image, all));
+    }
+
     public async Task<BuildResult> BuildAsync(BuildRecipe recipe, IProgress<BuildProgress>? progress, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(recipe);
@@ -135,7 +162,7 @@ public sealed partial class BuildEngine
         var metadataDism = new DismClient(recipe.DismPath, runner);
         var image = await metadataDism.GetImageAsync(sourceWim, recipe.ImageIndex, token).ConfigureAwait(false);
         host.ValidateImage(recipe, image);
-        ImageDefaults.RequireProfessional(image);
+        await RequireProfessionalAsync(metadataDism, sourceWim, image, token).ConfigureAwait(false);
         var efiRelative = new[] { @"efi\microsoft\boot\efisys.bin", @"efi\microsoft\boot\efisys_noprompt.bin" }
             .FirstOrDefault(p => File.Exists(Path.Combine(media.RootPath, p))) ??
             throw new InvalidDataException("The source does not contain a supported UEFI boot image.");

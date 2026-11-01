@@ -103,12 +103,12 @@ public sealed record BuildRecipe
             (CleanupCatalog.ModeForRecipe(this) != BuildMode.Tiny11Core || Flavor != BuildFlavor.Core ||
              ExpertActions.Length > 0 ||
              !SelectedOptions.ToHashSet(StringComparer.Ordinal).SetEquals(CleanupCatalog.ForMode(BuildMode.Tiny11Core))))
-            throw new InvalidDataException("The Proxmox template profile requires the fixed Tiny11 Core removal set.");
+            throw new InvalidDataException("The Proxmox template profile requires the fixed Windows 10 Core removal set.");
         if (Mode is BuildMode.Tiny11 or BuildMode.Tiny11Core &&
             (Flavor != (Mode == BuildMode.Tiny11Core ? BuildFlavor.Core : BuildFlavor.Regular) ||
              ExpertActions.Length > 0 ||
              !SelectedOptions.ToHashSet(StringComparer.Ordinal).SetEquals(CleanupCatalog.ForMode(Mode.Value))))
-            throw new InvalidDataException("Use Custom for changes to the Tiny11 or Tiny11 Core removal sets.");
+            throw new InvalidDataException("Use Custom for changes to the Windows 10 or Windows 10 Core removal sets.");
     }
 
     public static BuildRecipe Read(string path)

@@ -5,6 +5,20 @@ namespace Tiny10Builder.Core.Tests;
 
 public sealed class TemplateRecipeTests
 {
+    // The documented example recipe must stay valid: ValidateOptions requires SelectedOptions to equal the Core set exactly.
+    [Fact]
+    public void Committed_proxmox_core_example_recipe_is_valid()
+    {
+        var directory = AppContext.BaseDirectory;
+        while (directory is not null && !File.Exists(Path.Combine(directory, "Tiny10Builder.sln")))
+            directory = Path.GetDirectoryName(directory);
+        Assert.NotNull(directory);
+        var recipe = BuildRecipe.Read(Path.Combine(directory!, "docs", "recipe.proxmox-core.json"));
+        Assert.Equal(TemplateProfile.ProxmoxCloudbaseInit, recipe.TemplateProfile);
+        Assert.Equal(6, recipe.ImageIndex);
+        Assert.True(recipe.SelectedOptions.ToHashSet(StringComparer.Ordinal).SetEquals(CleanupCatalog.ForMode(BuildMode.Tiny11Core)));
+    }
+
     // TM-01 / TM-T01: Legacy recipes do not implicitly enable the template profile.
     [Fact]
     public void Legacy_recipe_without_template_field_keeps_profile_disabled()

@@ -121,6 +121,33 @@ public sealed class BuildEngineTests
     }
 
     [Fact]
+    public async Task Non_Pro_selection_names_the_selected_image_and_the_Pro_index_when_the_source_has_one()
+    {
+        using var fixture = new BuildFixture();
+        fixture.Runner.ImageName = "Windows 10 Home";
+        fixture.Runner.ImageEdition = "Core";
+        fixture.Runner.ListedIndexes = "Index : 1\nIndex : 6\n";
+        fixture.Runner.ProIndex = 6;
+        var recipe = fixture.Recipe with { ImageIndex = 1 };
+        var build = await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Engine.BuildAsync(recipe, null, CancellationToken.None));
+        Assert.Equal("Image index 1 is Windows 10 Home; Windows 10 Pro is index 6. Set ImageIndex to 6.", build.Message);
+        var inventory = await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Engine.InventoryAsync(recipe, null, CancellationToken.None));
+        Assert.Equal(build.Message, inventory.Message);
+        var preflight = await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Engine.PreflightAsync(recipe, CancellationToken.None));
+        Assert.Equal(build.Message, preflight.Message);
+        Assert.False(Directory.Exists(recipe.WorkspacePath));
+    }
+
+    [Fact]
+    public async Task Preflight_accepts_a_Pro_selection_without_oscdimg_or_workspace_writes()
+    {
+        using var fixture = new BuildFixture();
+        await fixture.Engine.PreflightAsync(fixture.Recipe with { OscdimgPath = "" }, CancellationToken.None);
+        Assert.False(Directory.Exists(fixture.Recipe.WorkspacePath));
+        Assert.DoesNotContain(fixture.Runner.Calls, c => c.Contains("/Export-Image") || c.Contains("/Mount-Image"));
+    }
+
+    [Fact]
     public async Task Build_refuses_a_non_Pro_edition_before_any_workspace_write()
     {
         using var fixture = new BuildFixture();
@@ -307,6 +334,9 @@ internal sealed class FakeRunner(int build, string architecture, List<string> ev
     public List<IReadOnlyList<string>> Calls { get; } = [];
     public string ImageName { get; set; } = "Windows 10 Pro";
     public string ImageEdition { get; set; } = "Professional";
+    // When set, the image list reports these indexes and ProIndex (if any) reads as Windows 10 Pro; other indexes use ImageName/ImageEdition.
+    public string? ListedIndexes { get; set; }
+    public int? ProIndex { get; set; }
     public bool FailPackages { get; set; }
     public bool FailIso { get; set; }
     public bool FailOptimizedMount { get; set; }
@@ -389,12 +419,13 @@ internal sealed class FakeRunner(int build, string architecture, List<string> ev
             var file = Value("/WimFile:");
             var boot = file.EndsWith("boot.wim", StringComparison.OrdinalIgnoreCase);
             if (!args.Any(a => a.StartsWith("/Index:")))
-                return Result(boot ? "Index : 1\nIndex : 2\n" : file.Contains(@"\source\") ? "Index : 3\n" : "Index : 1\n");
+                return Result(boot ? "Index : 1\nIndex : 2\n" : ListedIndexes ?? (file.Contains(@"\source\") ? "Index : 3\n" : "Index : 1\n"));
+            var isPro = !boot && ProIndex is int pro && args.Contains($"/Index:{pro}");
             var (reportedBuild, reportedArchitecture) = ReadingFor?.Invoke(file) ?? (build, architecture);
             return Result($"Deployment Image Servicing and Management tool\nVersion: 10.0.99999.1000\n" +
-                $"Name : {(boot ? (args.Contains("/Index:1") ? "Microsoft Windows PE" : "Microsoft Windows Setup") : ImageName)}\nDescription : Image\n" +
+                $"Name : {(boot ? (args.Contains("/Index:1") ? "Microsoft Windows PE" : "Microsoft Windows Setup") : isPro ? "Windows 10 Pro" : ImageName)}\nDescription : Image\n" +
                 $"Architecture : {reportedArchitecture}\nVersion : 10.0.{reportedBuild}\nServicePack Build : 123\n" +
-                $"Edition : {ImageEdition}\nInstallation : Client\nSize : 16,000,000,000 bytes\n");
+                $"Edition : {(isPro ? "Professional" : ImageEdition)}\nInstallation : Client\nSize : 16,000,000,000 bytes\n");
         }
         if (args.Contains("/Export-Image"))
             File.WriteAllBytes(Value("/DestinationImageFile:"), FakeWim.Create(seed: (byte)(0x20 + exports++)));

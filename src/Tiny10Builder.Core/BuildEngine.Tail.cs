@@ -303,7 +303,7 @@ public sealed partial class BuildEngine
             await TemplatePayloadStager.ValidateMediaAsync(s.Staging, s.TemplateArtifacts,
                 s.TemplateManifestSha256 ?? throw new InvalidDataException("Template manifest identity is missing."), token).ConfigureAwait(false);
         }
-        s.Stage("Create ISO", "Creating a UEFI-bootable ISO using Microsoft's oscdimg.", token);
+        s.Stage("Create ISO", "Creating a BIOS and UEFI bootable ISO using Microsoft's oscdimg.", token);
         if (File.Exists(s.TemporaryIso))
         {
             PathSafety.RejectReparsePoints(s.TemporaryIso);

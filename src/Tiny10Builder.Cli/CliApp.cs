@@ -69,6 +69,7 @@ public static class CliApp
                 ["IsoPath"] = result.IsoPath,
                 ["Sha256"] = result.Sha256,
                 ["SourceBuild"] = result.SourceBuild,
+                // EdgePreserved is the intent of the recipe profile (Edge is kept by the Proxmox profile), not a measurement of the image.
                 ["EdgePreserved"] = recipe.TemplateProfile == TemplateProfile.ProxmoxCloudbaseInit,
                 ["WebView2Present"] = result.WebView2Present
             };

@@ -172,8 +172,8 @@ public sealed class CliTests : IDisposable
     private static CliBuildResult Ok(BuildRecipe r) => new(r.OutputPath, "ABC123", "10.0.19045.5555", false);
 
     private static BuildEngineAdapter Adapter(Func<string> find, Func<string, IProgress<string>?, CancellationToken, Task<string>> acquire,
-        Action<BuildRecipe> seen)
-        => new(acquire, find, (r, _, _) => { seen(r); return Task.FromResult(Ok(r)); });
+        Action<BuildRecipe> seen, Func<BuildRecipe, CancellationToken, Task>? validate = null)
+        => new(acquire, find, (r, _, _) => { seen(r); return Task.FromResult(Ok(r)); }, validate ?? ((_, _) => Task.CompletedTask));
 
     [Fact]
     public async Task Missing_oscdimg_invokes_acquirer_and_passes_its_path_to_the_engine()
@@ -186,6 +186,33 @@ public sealed class CliTests : IDisposable
         Assert.Equal(@"C:\tools\oscdimg.exe", seen!.OscdimgPath);
         Assert.EndsWith(Path.Combine("Tiny10Builder", "tools"), dir);
         Assert.False(dir!.StartsWith(Workspace, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("Image index 1 is Windows 10 Home; Windows 10 Pro is index 6. Set ImageIndex to 6.")]
+    [InlineData(ProMessage)]
+    public async Task Failed_image_validation_exits_2_without_acquiring_oscdimg(string message)
+    {
+        var acquired = 0; var engineRuns = 0;
+        var adapter = Adapter(() => "", (_, _, _) => { acquired++; return Task.FromResult("x"); }, _ => engineRuns++,
+            (_, _) => throw new InvalidDataException(message));
+        var r = await Run2(adapter, Build(Recipe(false), Iso()));
+        Assert.Equal(2, r.Code);
+        Assert.Contains(message, r.Err);
+        Assert.Equal(0, acquired);
+        Assert.Equal(0, engineRuns);
+    }
+
+    [Fact]
+    public async Task Passed_image_validation_acquires_oscdimg_once_and_runs_the_engine()
+    {
+        var acquired = 0; var order = new List<string>();
+        var adapter = Adapter(() => "", (_, _, _) => { acquired++; order.Add("acquire"); return Task.FromResult(@"C:\tools\oscdimg.exe"); },
+            _ => order.Add("engine"), (_, _) => { order.Add("validate"); return Task.CompletedTask; });
+        var r = await Run2(adapter, Build(Recipe(false), Iso()));
+        Assert.Equal(0, r.Code);
+        Assert.Equal(1, acquired);
+        Assert.Equal(["validate", "acquire", "engine"], order);
     }
 
     [Fact]

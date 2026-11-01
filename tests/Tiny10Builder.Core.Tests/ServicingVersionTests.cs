@@ -78,7 +78,7 @@ public sealed class ServicingVersionTests
         var error = Assert.Throws<InvalidOperationException>(() =>
             ToolLocator.EnsureServicingVersion(new Version(10, 0, tool, 1000), Image(build)));
         Assert.Contains($"build {build}", error.Message);
-        Assert.Contains("detects them automatically", error.Message);
+        Assert.Contains("run the command again", error.Message);
         Assert.Contains("Windows ADK", error.Message);
         Assert.DoesNotContain("Select a matching", error.Message);
     }
