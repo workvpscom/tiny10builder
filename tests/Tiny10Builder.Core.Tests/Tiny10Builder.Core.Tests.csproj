@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\fixtures\win10-19045\*.txt" Link="fixtures\win10-19045\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1"/>
+    <PackageReference Include="xunit" Version="2.9.2"/>
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all"/>
+    <ProjectReference Include="..\..\src\Tiny10Builder.Core\Tiny10Builder.Core.csproj"/>
+    <ProjectReference Include="..\..\src\Tiny10Builder.Cli\Tiny10Builder.Cli.csproj"/>
+  </ItemGroup>
+</Project>

@@ -1,2 +1,15 @@
 .superpowers/
 .worktrees/
+**/bin/
+**/obj/
+.vs/
+artifacts/
+TestResults/
+*.user
+*.iso
+*.wim
+*.esd
+*.vhdx
+.DS_Store
+__pycache__/
+*.pyc

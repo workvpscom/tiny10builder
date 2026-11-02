@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Template\*.py" LogicalName="Tiny10Builder.Core.Template.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Template\*.ps1" LogicalName="Tiny10Builder.Core.Template.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Template\Drivers\*" LogicalName="Tiny10Builder.Core.Template.Drivers.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

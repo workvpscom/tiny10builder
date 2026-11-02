@@ -1,0 +1,426 @@
+"""D2-T01..04: public Cloudbase plugin entrypoint with simulated OS/state seams."""
+import copy
+import importlib.util
+import pathlib
+import types
+import unittest
+import sys
+
+# Test-host stubs only; production has no simulated Cloudbase fallback.
+if importlib.util.find_spec('cloudbaseinit') is None:
+    for name in ('cloudbaseinit', 'cloudbaseinit.plugins', 'cloudbaseinit.plugins.common'):
+        stub = types.ModuleType(name)
+        stub.__path__ = []
+        sys.modules[name] = stub
+    base_stub = types.ModuleType('cloudbaseinit.plugins.common.base')
+    class TestBasePlugin:
+        def get_name(self):
+            return self.__class__.__name__
+    base_stub.BasePlugin = TestBasePlugin
+    sys.modules[base_stub.__name__] = base_stub
+
+PATH = pathlib.Path(__file__).parents[2] / 'src/Tiny10Builder.Core/Template/tiny10_cloudbase.py'
+spec = importlib.util.spec_from_file_location('tiny10_cloudbase', PATH)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+
+class Store:
+    def __init__(self):
+        self.data = {'schema': 1, 'applied': {}, 'attempts': {}}
+        self.key = b'test-only-key-not-a-credential'
+
+    def load(self):
+        return copy.deepcopy(self.data)
+
+    def save(self, value):
+        self.data = copy.deepcopy(value)
+
+    def fingerprint(self, value):
+        import hashlib
+        import hmac
+        return hmac.new(self.key, value.encode(), hashlib.sha256).hexdigest()
+
+
+class Backend:
+    def __init__(self):
+        self.calls = []
+        self.active = 'host-a'
+        self.pending = 'host-a'
+        self.fail_network = False
+        self.sid = 'S-1-5-21-1-2-3-500'
+        self.boot = 'boot-1'
+
+    def validate_account(self):
+        if not self.sid.endswith('-500'):
+            raise ValueError('Wrong SID')
+
+    def boot_identity(self):
+        return self.boot
+
+    def active_hostname(self):
+        return self.active
+
+    def pending_hostname(self):
+        return self.pending
+
+    def apply_hostname(self, name):
+        self.calls.append(('hostname', name))
+        self.pending = name
+        return self.active != name
+
+    def validate_network(self, network):
+        if network.get('mode') not in ('static', 'dhcp'):
+            raise ValueError('Invalid network')
+
+    def apply_network(self, network):
+        self.calls.append(('network', copy.deepcopy(network)))
+        if self.fail_network:
+            raise ValueError('Sensitive downstream failure must not escape')
+
+    def apply_password(self, password):
+        self.calls.append(('password', password))
+
+
+class Metadata:
+    def __init__(self):
+        self.password = 'Synthetic-Password-A!'
+        self.name = 'host-a'
+        self.network = {'mode': 'static', 'ip': '10.10.10.188', 'prefix': 22, 'gateway': '10.10.10.1', 'dns': ['10.10.10.1']}
+
+    def get_admin_password(self):
+        return self.password
+
+    def get_user_data(self):
+        return ('#cloud-config\nhostname: '+self.name+'\npassword: ignored\n').encode()
+
+
+class PluginTests(unittest.TestCase):
+    def setUp(self):
+        self.backend, self.store, self.metadata = Backend(), Store(), Metadata()
+        self.plugin = module.ProxmoxReconcilePlugin(backend=self.backend, store=self.store,
+                                                    network_reader=lambda s: copy.deepcopy(s.network))
+
+    def execute(self):
+        return self.plugin.execute(self.metadata, {})
+
+    # PL-07 / D2-T01
+    def test_password_A_B_A_and_unchanged(self):
+        for value in ('Synthetic-Password-A!', 'Synthetic-Password-B!', 'Synthetic-Password-A!'):
+            self.metadata.password = value
+            self.assertEqual(self.execute(), (2, False))
+        self.execute()
+        self.assertEqual([x[1] for x in self.backend.calls if x[0] == 'password'],
+                         ['Synthetic-Password-A!', 'Synthetic-Password-B!', 'Synthetic-Password-A!'])
+        self.assertNotIn('Synthetic-Password', repr(self.store.data))
+
+    # PL-07 / D2-T01
+    def test_missing_password_never_resets_or_generates(self):
+        self.metadata.password = None
+        self.execute()
+        self.assertEqual([x for x in self.backend.calls if x[0] == 'password'], [])
+
+    # PL-07 / D2-T01
+    def test_wrong_sid_blocks_every_mutation(self):
+        self.backend.sid = 'S-1-5-21-1-2-3-1000'
+        self.execute()
+        self.assertEqual(self.backend.calls, [])
+
+    # PL-05 / D2-T02
+    def test_pending_hostname_ack_only_after_next_boot_active(self):
+        self.execute()
+        self.backend.calls.clear()
+        self.metadata.name = 'host-b'
+        self.assertEqual(self.execute(), (2, True))
+        self.assertEqual(self.store.data['applied']['hostname'], 'host-a')
+        self.assertEqual(self.execute(), (2, False))
+        self.backend.boot = 'boot-2'
+        self.backend.active = 'host-b'
+        self.assertEqual(self.execute(), (2, False))
+        self.assertEqual(self.store.data['applied']['hostname'], 'host-b')
+        self.assertEqual(self.backend.calls, [('hostname', 'host-b')])
+
+    # PL-05 / D2-T02
+    def test_hostname_return_A_without_reapplying_other_groups(self):
+        self.execute()
+        self.metadata.name = 'host-b'
+        self.execute()
+        self.backend.active, self.backend.boot = 'host-b', 'boot-2'
+        self.execute()
+        self.backend.calls.clear()
+        self.metadata.name = 'host-a'
+        self.assertEqual(self.execute(), (2, True))
+        self.assertEqual(self.backend.calls, [('hostname', 'host-a')])
+
+    # PL-06 / D2-T03
+    def test_network_only_A_B_A_isolated_from_password(self):
+        self.execute()
+        self.backend.calls.clear()
+        for value in ('10.10.10.189', '10.10.10.188'):
+            self.metadata.network['ip'] = value
+            self.execute()
+        self.assertEqual([x[0] for x in self.backend.calls], ['network', 'network'])
+
+    # PL-06 / D2-T03
+    def test_failed_network_is_not_committed_and_retries_next_boot(self):
+        self.backend.fail_network = True
+        self.execute()
+        self.assertNotIn('network', self.store.data['applied'])
+        self.backend.fail_network = False
+        self.execute()
+        self.assertNotIn('network', self.store.data['applied'])
+        self.backend.boot = 'boot-2'
+        self.execute()
+        self.assertEqual(self.store.data['applied']['network'], self.metadata.network)
+
+    # GP-07 / D2-T04
+    def test_retries_are_bounded_and_status_does_not_expose_exception(self):
+        self.backend.fail_network = True
+        for index in range(4):
+            self.backend.boot = str(index)
+            self.execute()
+        self.assertEqual(len([x for x in self.backend.calls if x[0] == 'network']), 3)
+        self.assertNotIn('Sensitive', repr(self.store.data))
+        self.assertEqual(self.store.data['attempts']['network']['status'], 'BlockedRetryLimit')
+        self.backend.boot = 'operator-reboot-after-cooldown'
+        self.backend.fail_network = False
+        self.execute()
+        self.assertIn('network', self.store.data['applied'])
+
+    # Reconcile dirty mutations even when desired returns to last-applied.
+    def test_failed_network_B_then_return_A_reapplies_A(self):
+        self.execute()
+        self.metadata.network['ip'] = '10.10.10.189'
+        self.backend.fail_network = True
+        self.execute()
+        self.backend.fail_network = False
+        self.backend.calls.clear()
+        self.metadata.network['ip'] = '10.10.10.188'
+        self.backend.boot = 'boot-2'
+        self.execute()
+        self.assertEqual([x[0] for x in self.backend.calls], ['network'])
+
+    # Pending B may become active after reboot even when desired has returned to A.
+    def test_pending_rename_B_then_return_A_does_not_skip(self):
+        self.execute()
+        self.metadata.name = 'host-b'
+        self.execute()
+        self.backend.active, self.backend.boot = 'host-b', 'boot-2'
+        self.metadata.name = 'host-a'
+        self.backend.calls.clear()
+        self.assertEqual(self.execute(), (2, True))
+        self.assertEqual(self.backend.calls, [('hostname', 'host-a')])
+
+    # Cancel pending B in the registry even while active remains A.
+    def test_pending_B_active_A_then_desired_A_cancels_pending(self):
+        self.execute()
+        self.metadata.name = 'host-b'
+        self.execute()
+        self.assertEqual(self.backend.pending, 'host-b')
+        self.metadata.name = 'host-a'
+        self.backend.calls.clear()
+        self.execute()
+        self.assertEqual(self.backend.pending, 'host-a')
+        self.assertEqual(self.backend.calls, [('hostname', 'host-a')])
+
+    # Failed diagnostics must not block boot after metadata is corrected.
+    def test_invalid_metadata_then_corrected_metadata(self):
+        self.metadata.name = 'bad name'
+        self.execute()
+        self.metadata.name = 'host-a'
+        self.execute()
+        self.assertIn('password', self.store.data['applied'])
+
+    # An initially missing secret must not block a password supplied later.
+    def test_missing_password_then_supplied_later(self):
+        self.metadata.password = None
+        self.execute()
+        self.metadata.password = 'Synthetic-Later!'
+        self.execute()
+        self.assertIn(('password', 'Synthetic-Later!'), self.backend.calls)
+
+    # Reapply A when the setter succeeded but the journal was not acknowledged.
+    def test_dirty_password_B_then_return_A_reapplies_A(self):
+        self.execute()
+        self.store.data['attempts']['password'] = {'target': 'other-target', 'count': 1, 'boot': 'boot-1', 'status': 'Applying'}
+        self.backend.calls.clear()
+        self.backend.boot = 'boot-2'
+        self.execute()
+        self.assertEqual(self.backend.calls, [('password', 'Synthetic-Password-A!')])
+
+    # Retrying access must not reapply password or network.
+    def test_access_retry_does_not_repeat_mutations(self):
+        attempts = []
+        def access():
+            attempts.append(True)
+            if len(attempts) == 1:
+                raise ValueError('access failed')
+        self.backend.activate_access = access
+        self.execute()
+        self.assertEqual(self.store.data['error'], 'AccessPolicyFailed')
+        self.backend.calls.clear()
+        self.execute()
+        self.assertTrue(self.store.data['access_ready'])
+        self.assertEqual(self.backend.calls, [])
+
+    # A missing password must not enable RDP.
+    def test_missing_password_does_not_activate_access(self):
+        self.metadata.password = None
+        self.backend.activate_access = lambda: self.fail('Access activated without password')
+        self.execute()
+        self.assertNotIn('access_ready', self.store.data)
+
+    # Successful lifecycles must not accumulate permanent reboot budgets.
+    def test_five_hostname_A_B_A_cycles(self):
+        self.execute()
+        for index in range(5):
+            for name in ('host-b', 'host-a'):
+                self.metadata.name = name
+                self.backend.boot = str(index)+name+'request'
+                self.assertEqual(self.execute(), (2, True))
+                self.backend.active = name
+                self.backend.boot = str(index)+name+'ack'
+                self.assertEqual(self.execute(), (2, False))
+                self.assertEqual(self.store.data['applied']['hostname'], name)
+        self.assertEqual(self.store.data['hostname_reboots'], {})
+
+    # Bound automatic reboots for the same desired state across boots.
+    def test_hostname_auto_reboot_budget_does_not_reset(self):
+        self.metadata.name = 'host-b'
+        requests = 0
+        for index in range(12):
+            self.backend.boot = str(index)
+            requests += int(self.execute()[1])
+        self.assertEqual(requests, 3)
+        self.assertEqual(self.store.data['attempts']['hostname']['status'], 'BlockedRebootLimit')
+
+    # A corrupt journal must not invoke mutations.
+    def test_corrupt_attempt_schema_rejected(self):
+        for record in ({'count': '3'}, {'target': 'x', 'boot': [], 'count': 1, 'status': 'Applying'}):
+            with self.assertRaises(ValueError):
+                module.PrivateState.validate({'schema':1,'applied':{},'attempts':{'password':record}})
+
+    # GP-07 / D2-T04
+    def test_invalid_hostname_rejected_before_mutation(self):
+        self.metadata.name = "bad'; command"
+        self.execute()
+        self.assertEqual(self.backend.calls, [])
+
+    # GP-07 / D2-T04
+    def test_duplicate_hostname_in_userdata_rejected(self):
+        self.metadata.get_user_data = lambda: b'#cloud-config\nhostname: host-a\nhostname: host-b\n'
+        self.execute()
+        self.assertEqual(self.backend.calls, [])
+
+
+class HostnameLengthTests(unittest.TestCase):
+    def test_netbios_length_limit(self):
+        self.assertTrue(module.valid_hostname('a' * 15))
+        self.assertFalse(module.valid_hostname('a' * 16))
+        self.assertFalse(module.valid_hostname('a-' * 8))
+
+    def test_sixteen_character_hostname_rejected_before_mutation(self):
+        backend, metadata = Backend(), Metadata()
+        metadata.name = 'a' * 16
+        plugin = module.ProxmoxReconcilePlugin(backend=backend, store=Store(),
+                                               network_reader=lambda s: copy.deepcopy(s.network))
+        plugin.execute(metadata, {})
+        self.assertEqual(backend.calls, [])
+
+
+def adapter(name, description, hardware_id, status='Up'):
+    return {'Name': name, 'Description': description, 'HardwareId': hardware_id, 'Status': status}
+
+
+PHYSICAL = adapter('Ethernet', 'Red Hat VirtIO Ethernet Adapter', 'PCI\\VEN_1AF4&DEV_1000&SUBSYS_00011AF4&REV_00\\3&13C0B0C5&0&18')
+KDNIC = adapter('Ethernet 2', 'Microsoft Kernel Debug Network Adapter', 'ROOT\\KDNIC\\0000')
+
+
+class SelectEthernetAdapterTests(unittest.TestCase):
+    def test_physical_chosen_over_kernel_debug_adapter(self):
+        self.assertIs(module.select_ethernet_adapter([KDNIC, PHYSICAL]), PHYSICAL)
+
+    def test_two_physical_adapters_rejected(self):
+        other = adapter('Ethernet 3', 'Intel(R) PRO/1000 MT Network Connection', 'PCI\\VEN_8086&DEV_100E\\4&0')
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter([PHYSICAL, other])
+
+    def test_no_up_adapter_rejected(self):
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter([adapter('Ethernet', 'Red Hat VirtIO Ethernet Adapter', PHYSICAL['HardwareId'], 'Disconnected'), KDNIC])
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter([])
+
+    def test_down_physical_ignored_when_one_up(self):
+        down = adapter('Ethernet 3', 'Intel(R) PRO/1000 MT Network Connection', 'PCI\\VEN_8086&DEV_100E\\4&0', 'Disconnected')
+        self.assertIs(module.select_ethernet_adapter([down, PHYSICAL]), PHYSICAL)
+
+    def test_known_software_adapters_are_virtual(self):
+        for desc, hw in (('Microsoft Wi-Fi Direct Virtual Adapter', '{5D624F94-8850-40C3-A3FA-A4FD2080BAF3}\\VWIFIMP_WFD'),
+                         ('Hyper-V Virtual Ethernet Adapter', 'ROOT\\VMS_MP\\0000'),
+                         ('Bluetooth Device (Personal Area Network)', 'BTH\\MS_BTHPAN\\6&1'),
+                         ('TAP-Windows Adapter V9', 'ROOT\\NET\\0000'),
+                         ('Microsoft KM-TEST Loopback Adapter', 'ROOT\\NET\\0001')):
+            with self.subTest(desc):
+                self.assertIs(module.select_ethernet_adapter([adapter('X', desc, hw), PHYSICAL]), PHYSICAL)
+
+
+VIRTIO_ROW = {'NetConnectionID': 'Ethernet', 'Description': 'Red Hat VirtIO Ethernet Adapter',
+              'PNPDeviceID': 'PCI\\VEN_1AF4&DEV_1000\\3&13C0B0C5&0&18', 'NetConnectionStatus': 2}
+KDNIC_ROW = {'NetConnectionID': 'Ethernet 2', 'Description': 'Microsoft Kernel Debug Network Adapter',
+             'PNPDeviceID': 'ROOT\\KDNIC\\0000', 'NetConnectionStatus': 2}
+
+
+class AdapterJoinTests(unittest.TestCase):
+    """WindowsBackend._adapters joins osutils names to Win32_NetworkAdapter rows by NetConnectionID."""
+
+    def backend(self, names, output):
+        import json
+        backend = module.WindowsBackend.__new__(module.WindowsBackend)
+        backend.interface = None
+        backend.osutils = types.SimpleNamespace(
+            get_network_adapters=lambda: [(n, '00:11:22:33:44:55') for n in names])
+        backend._powershell = lambda script: output if isinstance(output, str) else json.dumps(output)
+        return backend
+
+    def test_list_joins_keys_and_selects_virtio_over_kernel_debug(self):
+        backend = self.backend(['Ethernet', 'Ethernet 2'], [KDNIC_ROW, VIRTIO_ROW])
+        adapters = backend._adapters()
+        self.assertEqual(sorted(adapters, key=lambda a: a['Name']), [
+            {'Name': 'Ethernet', 'Description': 'Red Hat VirtIO Ethernet Adapter',
+             'HardwareId': VIRTIO_ROW['PNPDeviceID'], 'Status': 'Up'},
+            {'Name': 'Ethernet 2', 'Description': 'Microsoft Kernel Debug Network Adapter',
+             'HardwareId': 'ROOT\\KDNIC\\0000', 'Status': 'Up'}])
+        backend.validate_network({'mode': 'static', 'ip': '10.0.0.5', 'prefix': 24,
+                                  'gateway': '10.0.0.1', 'dns': ['10.0.0.1']})
+        self.assertEqual(backend.interface, 'Ethernet')
+
+    def test_single_dict_row(self):
+        adapters = self.backend(['Ethernet'], VIRTIO_ROW)._adapters()
+        self.assertEqual([a['Name'] for a in adapters], ['Ethernet'])
+
+    def test_empty_output_fails_closed(self):
+        backend = self.backend(['Ethernet'], '')
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter(backend._adapters())
+
+    def test_status_other_than_connected_is_down(self):
+        row = dict(VIRTIO_ROW, NetConnectionStatus=7)
+        adapters = self.backend(['Ethernet'], [row])._adapters()
+        self.assertEqual(adapters[0]['Status'], 'Down')
+        with self.assertRaises(ValueError):
+            module.select_ethernet_adapter(adapters)
+
+    def test_cim_rows_not_listed_by_osutils_are_ignored(self):
+        adapters = self.backend(['Ethernet'], [KDNIC_ROW, VIRTIO_ROW])._adapters()
+        self.assertEqual([a['Name'] for a in adapters], ['Ethernet'])
+
+    def test_osutils_adapter_without_cim_row_fails_closed(self):
+        # Otherwise a second real NIC would be silently dropped and the remaining one chosen.
+        backend = self.backend(['Ethernet', 'Ethernet 3'], [VIRTIO_ROW])
+        with self.assertRaises(ValueError):
+            backend._adapters()
+
+
+if __name__ == '__main__':
+    unittest.main()
